@@ -1,7 +1,7 @@
 import "dotenv/config";
 import http from "node:http";
 import app from "./app";
-// import { sequelize } from "./models";
+import { sequelize } from "./models";
 // import { bootstrapSuperAdmin } from "./utils/bootstrapSuperAdmin";
 import { logger } from "./utils/logger";
 
