@@ -2,7 +2,7 @@ import "dotenv/config";
 import http from "node:http";
 import app from "./app";
 import { sequelize } from "./models";
-// import { bootstrapSuperAdmin } from "./utils/bootstrapSuperAdmin";
+import { bootstrapSuperAdmin } from "./utils/bootstrapSuperAdmin";
 import { logger } from "./utils/logger";
 
 const PORT = Number(process.env.PORT || 5000);
@@ -17,7 +17,7 @@ async function main() {
       logger.info("✅ Models synced (dev mode)");
     }
 
-    // await bootstrapSuperAdmin();
+    await bootstrapSuperAdmin();
   } catch (err: any) {
     logger.error("❌ Database init failed", { error: err.message });
     process.exit(1);
