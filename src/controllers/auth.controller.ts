@@ -149,7 +149,7 @@ export async function refresh(req: Request, res: Response) {
   let decoded: {
     userId: string;
     platformRole: (typeof PLATFORM_ROLES)[keyof typeof PLATFORM_ROLES];
-  };
+   };
   try {
     decoded = verifyRefreshToken(token);
   } catch {

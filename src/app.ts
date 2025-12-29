@@ -7,6 +7,7 @@ import cookieParser from "cookie-parser";
 import path from "path";
 import authRoutes from "./routes/auth.routes";
 import ranchRoutes from "./routes/ranch.routes";
+import adminRoutes from "./routes/admin.routes";
 
 import { logMiddleware } from "./utils/logger";
 
@@ -45,5 +46,6 @@ app.get("/version", (_req, res) =>
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/ranches", ranchRoutes);
+app.use("/api/v1/admin", adminRoutes);
 
 export default app;

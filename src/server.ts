@@ -2,22 +2,24 @@ import "dotenv/config";
 import http from "node:http";
 import app from "./app";
 import { sequelize } from "./models";
-import { bootstrapSuperAdmin } from "./utils/bootstrapSuperAdmin";
 import { logger } from "./utils/logger";
+import { ensureSuperAdmin } from "./utils/initAdmin";
 
 const PORT = Number(process.env.PORT || 5000);
 
 async function main() {
   try {
-    // await sequelize.authenticate();
+    await sequelize.authenticate();
     logger.info("✅ Database connected successfully");
 
+    // Only for local/dev experimentation — not production
     if (process.env.DB_SYNC === "true") {
-      // await sequelize.sync({ alter: true });
+      await sequelize.sync({ alter: true });
       logger.info("✅ Models synced (dev mode)");
     }
 
-    await bootstrapSuperAdmin();
+    // Create super admin if none exists (safe, idempotent)
+    await ensureSuperAdmin();
   } catch (err: any) {
     logger.error("❌ Database init failed", { error: err.message });
     process.exit(1);
@@ -27,18 +29,19 @@ async function main() {
   server.keepAliveTimeout = 60_000;
   server.headersTimeout = 65_000;
 
-  server.listen(PORT, () =>
-    logger.info(`🚀 SmartRUGA API running on http://localhost:${PORT}`)
-  );
+  server.listen(PORT, () => {
+    logger.info(`🚀 SmartRUGA API running on http://localhost:${PORT}`);
+  });
 
   const shutdown = async (sig: string, code = 0) => {
     logger.info(`${sig} received, shutting down...`);
     try {
-      // await sequelize.close();
+      await sequelize.close();
       logger.info("DB connection closed");
     } catch (e: any) {
       logger.error("Error closing DB", { error: e.message });
     }
+
     server.close(() => process.exit(code));
     setTimeout(() => process.exit(code || 1), 10_000).unref();
   };

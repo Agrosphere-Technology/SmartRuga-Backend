@@ -4,6 +4,7 @@ import {
   MEMBERSHIP_STATUS,
 } from "../constants/roles";
 
+// Represents the authenticated user making the request
 export interface AuthUser {
   id: string; // UUID
   email: string;
@@ -12,12 +13,14 @@ export interface AuthUser {
   lastName?: string | null;
 }
 
+// Represents the context of a ranch the user is associated with
 export interface RanchContext {
   id: string; // UUID
   slug: string;
   name: string;
 }
 
+// Represents the context of a ranch membership for the user
 export interface RanchMembershipContext {
   id: string; // UUID
   ranchRole: (typeof RANCH_ROLES)[keyof typeof RANCH_ROLES];
