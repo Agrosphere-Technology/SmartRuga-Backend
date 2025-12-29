@@ -2,8 +2,9 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { User } from "../models";
+import { PlatformRole } from "../types";
 
-export type PlatformRole = "user" | "admin" | "super_admin";
+type AccessPayload = { userId: string; platformRole: PlatformRole };
 
 declare global {
   namespace Express {
@@ -31,7 +32,15 @@ export const requireAuth =
       }
 
       const token = authHeader.split(" ")[1];
-      const decoded: any = jwt.verify(token, process.env.JWT_ACCESS_SECRET!);
+
+      // const token = authHeader?.startsWith("Bearer ")
+      //   ? authHeader.slice(7).trim()
+      //   : null;
+
+      const decoded: any = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET!
+      ) as AccessPayload;
 
       const user = await User.findByPk(decoded.userId);
       if (!user) return res.status(401).json({ message: "User not found" });
