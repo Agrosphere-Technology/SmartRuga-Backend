@@ -6,6 +6,7 @@ import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import path from "path";
 import authRoutes from "./routes/auth.routes";
+import ranchRoutes from "./routes/ranch.routes";
 
 import { logMiddleware } from "./utils/logger";
 
@@ -43,5 +44,6 @@ app.get("/version", (_req, res) =>
 // routes
 
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/ranches", ranchRoutes);
 
 export default app;

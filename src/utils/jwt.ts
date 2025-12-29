@@ -1,8 +1,11 @@
 import jwt, { type Secret } from "jsonwebtoken";
 import ms, { type StringValue } from "ms";
-import type { PlatformRole } from "../types";
+import { PLATFORM_ROLES } from "../constants/roles";
 
-type JwtPayload = { userId: string; platformRole: PlatformRole };
+type JwtPayload = {
+  userId: string;
+  platformRole: (typeof PLATFORM_ROLES)[keyof typeof PLATFORM_ROLES];
+};
 
 const accessSecret: Secret = process.env.JWT_ACCESS_SECRET as string;
 const refreshSecret: Secret = process.env.JWT_REFRESH_SECRET as string;

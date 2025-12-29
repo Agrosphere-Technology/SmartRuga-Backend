@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
-import { z } from "zod";
 
 import { User, RefreshToken } from "../models";
 import { sha256 } from "../utils/crypto";
@@ -10,15 +9,17 @@ import {
   verifyRefreshToken,
   refreshExpiryDate,
 } from "../utils/jwt";
-import type { PlatformRole } from "../types";
 import { loginSchema, registerSchema } from "../validators/auth.validator";
 import { clearRefreshCookie, setRefreshCookie } from "../utils/cookies";
+import { StatusCodes } from "http-status-codes";
+import { PLATFORM_ROLES } from "../constants/roles";
 
+// Register a new user
 export async function register(req: Request, res: Response) {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     return res
-      .status(400)
+      .status(StatusCodes.BAD_REQUEST)
       .json({ message: "Invalid payload", issues: parsed.error.issues });
   }
 
@@ -26,7 +27,10 @@ export async function register(req: Request, res: Response) {
   const { password, firstName, lastName } = parsed.data;
 
   const exists = await User.findOne({ where: { email } });
-  if (exists) return res.status(409).json({ message: "Email already in use" });
+  if (exists)
+    return res
+      .status(StatusCodes.CONFLICT)
+      .json({ message: "Email already in use" });
 
   const password_hash = await bcrypt.hash(password, 12);
 
@@ -38,7 +42,9 @@ export async function register(req: Request, res: Response) {
     platform_role: "user",
   } as any);
 
-  const platformRole = user.get("platform_role") as PlatformRole;
+  const platformRole = user.get(
+    "platform_role"
+  ) as (typeof PLATFORM_ROLES)[keyof typeof PLATFORM_ROLES];
 
   const accessToken = signAccessToken({
     userId: user.get("id") as string,
@@ -58,7 +64,7 @@ export async function register(req: Request, res: Response) {
 
   setRefreshCookie(res, refreshToken);
 
-  return res.status(201).json({
+  return res.status(StatusCodes.CREATED).json({
     user: {
       id: user.get("id"),
       email: user.get("email"),
@@ -70,11 +76,12 @@ export async function register(req: Request, res: Response) {
   });
 }
 
+// Login an existing user
 export async function login(req: Request, res: Response) {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     return res
-      .status(400)
+      .status(StatusCodes.BAD_REQUEST)
       .json({ message: "Invalid payload", issues: parsed.error.issues });
   }
 
@@ -82,15 +89,23 @@ export async function login(req: Request, res: Response) {
   const { password } = parsed.data;
 
   const user = await User.findOne({ where: { email } });
-  if (!user) return res.status(401).json({ message: "Invalid credentials" });
+  if (!user)
+    return res
+      .status(StatusCodes.UNAUTHORIZED)
+      .json({ message: "Invalid credentials" });
 
   const ok = await bcrypt.compare(
     password,
     user.get("password_hash") as string
   );
-  if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+  if (!ok)
+    return res
+      .status(StatusCodes.UNAUTHORIZED)
+      .json({ message: "Invalid credentials" });
 
-  const platformRole = user.get("platform_role") as PlatformRole;
+  const platformRole = user.get(
+    "platform_role"
+  ) as (typeof PLATFORM_ROLES)[keyof typeof PLATFORM_ROLES];
 
   const accessToken = signAccessToken({
     userId: user.get("id") as string,
@@ -122,16 +137,25 @@ export async function login(req: Request, res: Response) {
   });
 }
 
+// Refresh access token
 export async function refresh(req: Request, res: Response) {
   // cookie-first (web), fallback to body (mobile-friendly)
   const token: string | undefined = req.cookies?.rt || req.body?.refreshToken;
-  if (!token) return res.status(401).json({ message: "Missing refresh token" });
+  if (!token)
+    return res
+      .status(StatusCodes.UNAUTHORIZED)
+      .json({ message: "Missing refresh token" });
 
-  let decoded: { userId: string; platformRole: PlatformRole };
+  let decoded: {
+    userId: string;
+    platformRole: (typeof PLATFORM_ROLES)[keyof typeof PLATFORM_ROLES];
+  };
   try {
     decoded = verifyRefreshToken(token);
   } catch {
-    return res.status(401).json({ message: "Invalid/expired refresh token" });
+    return res
+      .status(StatusCodes.UNAUTHORIZED)
+      .json({ message: "Invalid/expired refresh token" });
   }
 
   const tokenHash = sha256(token);
@@ -140,15 +164,20 @@ export async function refresh(req: Request, res: Response) {
     where: { token_hash: tokenHash },
   });
   if (!saved)
-    return res.status(401).json({ message: "Refresh token not recognized" });
+    return res
+      .status(StatusCodes.BAD_REQUEST)
+      .json({ message: "Refresh token not recognized" });
 
   if (saved.get("revoked_at"))
-    return res.status(401).json({ message: "Refresh token revoked" });
+    return res
+      .status(StatusCodes.UNAUTHORIZED)
+      .json({ message: "Refresh token revoked" });
 
   const expiresAt = saved.get("expires_at") as Date;
   if (expiresAt.getTime() < Date.now())
-    return res.status(401).json({ message: "Refresh token expired" });
-
+    return res
+      .status(StatusCodes.UNAUTHORIZED)
+      .json({ message: "Refresh token expired" });
   // rotate refresh token
   const newRefresh = signRefreshToken({
     userId: decoded.userId,
@@ -174,6 +203,7 @@ export async function refresh(req: Request, res: Response) {
   return res.json({ accessToken: newAccess });
 }
 
+// Logout user
 export async function logout(req: Request, res: Response) {
   const token: string | undefined = req.cookies?.rt || req.body?.refreshToken;
 

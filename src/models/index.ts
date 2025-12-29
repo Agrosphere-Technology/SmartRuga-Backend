@@ -29,7 +29,7 @@ User.hasMany(Ranch, { foreignKey: "created_by", as: "createdRanches" });
 Ranch.belongsTo(User, { foreignKey: "created_by", as: "creator" });
 
 Ranch.hasMany(RanchMember, { foreignKey: "ranch_id", as: "members" });
-RanchMember.belongsTo(Ranch, { foreignKey: "ranch_id" });
+RanchMember.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 
 User.hasMany(RanchMember, { foreignKey: "user_id", as: "memberships" });
 RanchMember.belongsTo(User, { foreignKey: "user_id" });
