@@ -4,7 +4,12 @@ export function RanchMemberFactory(sequelize: Sequelize) {
   return sequelize.define(
     "RanchMember",
     {
-      id: { type: DataTypes.UUID, primaryKey: true },
+      id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        allowNull: false,
+        primaryKey: true,
+      },
       ranch_id: { type: DataTypes.UUID, allowNull: false },
       user_id: { type: DataTypes.UUID, allowNull: false },
       role: {

@@ -1,17 +1,23 @@
+import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { User } from "../models";
 import { PLATFORM_ROLES } from "../constants/roles";
 
 export async function ensureSuperAdmin(): Promise<void> {
-  const email = process.env.SUPERADMIN_EMAIL;
-  const password = process.env.SUPERADMIN_PASSWORD;
+  const email = process.env.SUPER_ADMIN_EMAIL || "";
+  const password = process.env.SUPER_ADMIN_PASSWORD || "";
 
-  const firstName = process.env.SUPERADMIN_FIRST_NAME || "Super";
-  const lastName = process.env.SUPERADMIN_LAST_NAME || "Admin";
+  const firstName = process.env.SUPER_ADMIN_FIRST_NAME || "Super";
+  const lastName = process.env.SUPER_ADMIN_LAST_NAME || "Admin";
+  // console.log("🔐 Ensuring super admin user exists...");
+  // console.log(`   Email: ${email}`);
+  // console.log(`   First Name: ${firstName}`);
+  // console.log(`   Last Name: ${lastName}`);
+  // console.log(`   Password: ${password ? "********" : "(not set)"}`);
 
   if (!email || !password) {
     console.warn(
-      "⚠️ SUPERADMIN_EMAIL or SUPERADMIN_PASSWORD not set. Skipping super admin creation."
+      "⚠️ SUPER_ADMIN_EMAIL or SUPERADMIN_PASSWORD not set. Skipping super admin creation."
     );
     return;
   }

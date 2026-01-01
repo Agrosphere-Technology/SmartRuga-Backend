@@ -22,7 +22,12 @@ export function UserFactory(sequelize: Sequelize) {
   return sequelize.define<UserModel>(
     "User",
     {
-      id: { type: DataTypes.UUID, primaryKey: true },
+      id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true,
+        allowNull: false,
+      },
       first_name: { type: DataTypes.STRING(100), allowNull: true },
       last_name: { type: DataTypes.STRING(100), allowNull: true },
       email: { type: DataTypes.STRING(255), allowNull: false, unique: true },
@@ -37,6 +42,8 @@ export function UserFactory(sequelize: Sequelize) {
       tableName: "users",
       underscored: true,
       timestamps: true,
+      createdAt: "created_at",
+      updatedAt: "updated_at",
     }
   );
 }

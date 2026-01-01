@@ -4,7 +4,12 @@ export function RefreshTokenFactory(sequelize: Sequelize) {
   return sequelize.define(
     "RefreshToken",
     {
-      id: { type: DataTypes.UUID, primaryKey: true },
+      id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        allowNull: false,
+        primaryKey: true,
+      },
       user_id: { type: DataTypes.UUID, allowNull: false },
       token_hash: {
         type: DataTypes.STRING(255),
