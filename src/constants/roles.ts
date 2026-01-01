@@ -17,3 +17,5 @@ export const MEMBERSHIP_STATUS = {
   PENDING: "pending",
   DISABLED: "disabled",
 } as const;
+
+export type RanchRole = (typeof RANCH_ROLES)[keyof typeof RANCH_ROLES];

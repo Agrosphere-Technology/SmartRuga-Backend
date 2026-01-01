@@ -4,6 +4,11 @@ import {
   MEMBERSHIP_STATUS,
 } from "../constants/roles";
 
+import type { RanchRole } from "../constants/roles";
+
+export type MembershipStatus =
+  (typeof MEMBERSHIP_STATUS)[keyof typeof MEMBERSHIP_STATUS];
+
 // Represents the authenticated user making the request
 export interface AuthUser {
   id: string; // UUID
@@ -21,8 +26,9 @@ export interface RanchContext {
 }
 
 // Represents the context of a ranch membership for the user
+
 export interface RanchMembershipContext {
-  id: string; // UUID
-  ranchRole: (typeof RANCH_ROLES)[keyof typeof RANCH_ROLES];
-  status: (typeof MEMBERSHIP_STATUS)[keyof typeof MEMBERSHIP_STATUS];
+  id: string;
+  ranchRole: RanchRole;
+  status: MembershipStatus;
 }

@@ -11,5 +11,12 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src", "migrations", "seeders", "src/types"]
+  "include": [
+    "src",
+    "migrations",
+    "seeders",
+    "src/types",
+    "src/**/*.ts",
+    "src/**/*.d.ts"
+  ]
 }

@@ -8,6 +8,8 @@ import path from "path";
 import authRoutes from "./routes/auth.routes";
 import ranchRoutes from "./routes/ranch.routes";
 import adminRoutes from "./routes/admin.routes";
+import inviteRoutes from "./routes/invite.routes";
+import ranchInviteRoutes from "./routes/ranchInvite.routes";
 
 import { logMiddleware } from "./utils/logger";
 
@@ -47,5 +49,7 @@ app.get("/version", (_req, res) =>
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/ranches", ranchRoutes);
 app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/invites", inviteRoutes);
+app.use("/api/v1/ranches", ranchInviteRoutes);
 
 export default app;

@@ -1,27 +1,36 @@
-// src/middlewares/ranchAccess.ts
 import { Request, Response, NextFunction } from "express";
 import { Ranch, RanchMember } from "../models";
-
-export type RanchRole = "owner" | "manager" | "vet" | "storekeeper" | "worker";
+import { StatusCodes } from "http-status-codes";
+import { MEMBERSHIP_STATUS } from "../constants/roles";
 
 export const requireRanchAccess =
-  (ranchRoles: RanchRole[] = []) =>
+  (slugParam = "slug") =>
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+      const slug = req.params[slugParam];
+      const userId = req.user!.id;
 
-      const slug = req.params.slug;
       const ranch = await Ranch.findOne({ where: { slug } });
-      if (!ranch) return res.status(404).json({ message: "Ranch not found" });
+      if (!ranch) {
+        return res
+          .status(StatusCodes.NOT_FOUND)
+          .json({ message: "Ranch not found" });
+      }
 
       const membership = await RanchMember.findOne({
-        where: { ranch_id: ranch.get("id"), user_id: req.user.id },
+        where: { ranch_id: ranch.get("id"), user_id: userId },
       });
 
-      if (!membership)
-        return res.status(403).json({ message: "Not a member of this ranch" });
-      if (membership.get("status") !== "active") {
-        return res.status(403).json({ message: "Membership not active" });
+      if (!membership) {
+        return res
+          .status(StatusCodes.FORBIDDEN)
+          .json({ message: "Access denied" });
+      }
+
+      if (membership.get("status") !== MEMBERSHIP_STATUS.ACTIVE) {
+        return res
+          .status(StatusCodes.FORBIDDEN)
+          .json({ message: "Membership not active" });
       }
 
       req.ranch = {
@@ -32,19 +41,16 @@ export const requireRanchAccess =
 
       req.membership = {
         id: membership.get("id") as string,
-        ranchRole: membership.get("role") as string,
-        status: membership.get("status") as string,
+        ranchRole: membership.get("role") as any,
+        status: membership.get("status") as any,
       };
 
-      if (
-        ranchRoles.length &&
-        !ranchRoles.includes(req.membership.ranchRole as RanchRole)
-      ) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-
-      next();
-    } catch (err) {
-      return res.status(500).json({ message: "Ranch access check failed" });
+      return next();
+    } catch (err: any) {
+      console.error("RANCH_ACCESS_ERROR:", err);
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        message: "Failed to resolve ranch access",
+        error: err?.message ?? "Unknown error",
+      });
     }
   };
