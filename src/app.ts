@@ -52,4 +52,6 @@ app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/invites", inviteRoutes);
 app.use("/api/v1/ranches", ranchInviteRoutes);
 
+app
+
 export default app;
