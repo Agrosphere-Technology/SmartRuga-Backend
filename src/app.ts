@@ -10,6 +10,8 @@ import ranchRoutes from "./routes/ranch.routes";
 import adminRoutes from "./routes/admin.routes";
 import inviteRoutes from "./routes/invite.routes";
 import ranchInviteRoutes from "./routes/ranchInvite.routes";
+import swaggerUi from "swagger-ui-express";
+import { swaggerSpec } from "./docs/swagger";
 
 import { logMiddleware } from "./utils/logger";
 
@@ -52,6 +54,14 @@ app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/invites", inviteRoutes);
 app.use("/api/v1/ranches", ranchInviteRoutes);
 
-app
+// Swagger docs (enable/disable with env)
+const enableDocs = (process.env.SWAGGER_ENABLED || "true") === "true";
+
+if (enableDocs) {
+  app.get("/api/v1/docs.json", (_req, res) => res.json(swaggerSpec));
+  app.use("/api/v1/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
+
+app;
 
 export default app;
