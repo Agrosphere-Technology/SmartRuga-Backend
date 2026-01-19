@@ -4,7 +4,9 @@ import {
   MEMBERSHIP_STATUS,
 } from "../constants/roles";
 
-import type { RanchRole } from "../constants/roles";
+export type PlatformRole = (typeof PLATFORM_ROLES)[keyof typeof PLATFORM_ROLES];
+
+export type RanchRole = (typeof RANCH_ROLES)[keyof typeof RANCH_ROLES];
 
 export type MembershipStatus =
   (typeof MEMBERSHIP_STATUS)[keyof typeof MEMBERSHIP_STATUS];
@@ -13,7 +15,7 @@ export type MembershipStatus =
 export interface AuthUser {
   id: string; // UUID
   email: string;
-  platformRole: (typeof PLATFORM_ROLES)[keyof typeof PLATFORM_ROLES];
+  platformRole: PlatformRole;
   firstName?: string | null;
   lastName?: string | null;
 }
@@ -26,36 +28,8 @@ export interface RanchContext {
 }
 
 // Represents the context of a ranch membership for the user
-
 export interface RanchMembershipContext {
-  id: string;
-  ranchRole: RanchRole;
-  status: MembershipStatus;
-}
-
-
-////
-
-
-export type PlatformRole =
-  (typeof PLATFORM_ROLES)[keyof typeof PLATFORM_ROLES];
-
-export interface AuthUser {
-  id: string;
-  email: string;
-  platformRole: PlatformRole;
-  firstName?: string | null;
-  lastName?: string | null;
-}
-
-export interface RanchContext {
-  id: string;
-  slug: string;
-  name: string;
-}
-
-export interface RanchMembershipContext {
-  id: string;
+  id: string; // UUID
   ranchRole: RanchRole;
   status: MembershipStatus;
 }
