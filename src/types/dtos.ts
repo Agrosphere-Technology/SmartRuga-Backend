@@ -1,4 +1,5 @@
-import type { PlatformRole, RanchRole, MembershipStatus } from "./index";
+import { RanchRole } from "../constants/roles";
+import type { PlatformRole, MembershipStatus } from "./index";
 
 export interface UserDTO {
   id: string;

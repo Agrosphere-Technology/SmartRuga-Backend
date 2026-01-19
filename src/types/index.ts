@@ -32,3 +32,30 @@ export interface RanchMembershipContext {
   ranchRole: RanchRole;
   status: MembershipStatus;
 }
+
+
+////
+
+
+export type PlatformRole =
+  (typeof PLATFORM_ROLES)[keyof typeof PLATFORM_ROLES];
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  platformRole: PlatformRole;
+  firstName?: string | null;
+  lastName?: string | null;
+}
+
+export interface RanchContext {
+  id: string;
+  slug: string;
+  name: string;
+}
+
+export interface RanchMembershipContext {
+  id: string;
+  ranchRole: RanchRole;
+  status: MembershipStatus;
+}
