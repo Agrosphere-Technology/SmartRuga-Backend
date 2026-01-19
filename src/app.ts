@@ -62,6 +62,18 @@ if (enableDocs) {
   app.use("/api/v1/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 }
 
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(__dirname, "../public/index.html"));
+});
+
+app.get("/about", (_req, res) => {
+  res.sendFile(path.join(__dirname, "../public/about.html"));
+});
+
+app.get("/docs", (_req, res) => {
+  res.sendFile(path.join(__dirname, "../public/docs.html"));
+});
+
 app;
 
 export default app;
