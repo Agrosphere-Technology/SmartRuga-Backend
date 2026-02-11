@@ -11,6 +11,10 @@ import { AnimalFactory } from "./animal.model";
 export const sequelize = new Sequelize(process.env.DATABASE_URL!, {
   dialect: "postgres",
   logging: false,
+  define: {
+    freezeTableName: true,
+    underscored: true,
+  },
   dialectOptions: {
     ssl: { require: true, rejectUnauthorized: false },
   },

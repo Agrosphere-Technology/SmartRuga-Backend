@@ -10,6 +10,8 @@ import ranchRoutes from "./routes/ranch.routes";
 import adminRoutes from "./routes/admin.routes";
 import inviteRoutes from "./routes/invite.routes";
 import ranchInviteRoutes from "./routes/ranchInvite.routes";
+import animalRoutes from "./routes/animal.routes";
+import qrRoutes from "./routes/qr.routes";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./docs/swagger";
 
@@ -25,10 +27,10 @@ const origins = (process.env.CORS_ORIGIN || "*")
 
 app.use(cors({ origin: origins, credentials: true }));
 app.use(
-  helmet({ hsts: process.env.NODE_ENV === "production" ? undefined : false })
+  helmet({ hsts: process.env.NODE_ENV === "production" ? undefined : false }),
 );
 app.use(
-  rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true })
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true }),
 );
 
 app.use(express.json({ limit: "1mb" }));
@@ -43,7 +45,7 @@ app.get("/version", (_req, res) =>
     name: "SmartRUGA API",
     version: "1.0.0",
     environment: process.env.NODE_ENV,
-  })
+  }),
 );
 
 // routes
@@ -53,6 +55,8 @@ app.use("/api/v1/ranches", ranchRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/invites", inviteRoutes);
 app.use("/api/v1/ranches", ranchInviteRoutes);
+app.use("/api/v1/ranches", animalRoutes);
+app.use(qrRoutes);
 
 // Swagger docs (enable/disable with env)
 const enableDocs = (process.env.SWAGGER_ENABLED || "true") === "true";

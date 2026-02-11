@@ -22,7 +22,7 @@ export function SpecieFactory(sequelize: Sequelize) {
       },
     },
     {
-      tableName: "specie",
+      tableName: "species",
       underscored: true,
       timestamps: true,
     },
