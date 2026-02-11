@@ -3,9 +3,10 @@ import "dotenv/config";
 import { UserFactory } from "./user.model";
 import { RanchFactory } from "./ranch.model";
 import { RanchMemberFactory } from "./ranchMember.model";
-import { SpeciesFactory } from "./species.model";
+import { SpecieFactory } from "./specie.model";
 import { InviteFactory } from "./invite.model";
 import { RefreshTokenFactory } from "./refreshToken.model";
+import { AnimalFactory } from "./animal.model";
 
 export const sequelize = new Sequelize(process.env.DATABASE_URL!, {
   dialect: "postgres",
@@ -20,9 +21,10 @@ export const sequelize = new Sequelize(process.env.DATABASE_URL!, {
 export const User = UserFactory(sequelize);
 export const Ranch = RanchFactory(sequelize);
 export const RanchMember = RanchMemberFactory(sequelize);
-export const Species = SpeciesFactory(sequelize);
+export const Species = SpecieFactory(sequelize);
 export const Invite = InviteFactory(sequelize);
 export const RefreshToken = RefreshTokenFactory(sequelize);
+export const Animal = AnimalFactory(sequelize);
 
 // Associations
 User.hasMany(Ranch, { foreignKey: "created_by", as: "createdRanches" });
@@ -42,3 +44,11 @@ Invite.belongsTo(User, { foreignKey: "created_by", as: "creator" });
 
 User.hasMany(RefreshToken, { foreignKey: "user_id", as: "refreshTokens" });
 RefreshToken.belongsTo(User, { foreignKey: "user_id" });
+
+// Ranch ↔ Animals
+Ranch.hasMany(Animal, { foreignKey: "ranch_id", as: "animals" });
+Animal.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
+
+// Species ↔ Animals
+Species.hasMany(Animal, { foreignKey: "species_id", as: "animals" });
+Animal.belongsTo(Species, { foreignKey: "species_id", as: "species" });
