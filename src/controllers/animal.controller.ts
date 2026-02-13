@@ -31,6 +31,20 @@ export async function createAnimal(req: Request, res: Response) {
         .json({ message: "Invalid species" });
     }
 
+    // check if tagNumber already exists to avoid duplication
+
+    if (tagNumber) {
+      const dup = await Animal.findOne({
+        where: { ranch_id: ranchId, tag_number: tagNumber },
+      });
+
+      if (dup) {
+        return res.status(StatusCodes.CONFLICT).json({
+          message: "Tag number already exists in this ranch",
+        });
+      }
+    }
+
     const animal = await Animal.create({
       ranch_id: ranchId,
       species_id: speciesId,
