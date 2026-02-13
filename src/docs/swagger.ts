@@ -19,6 +19,7 @@ export const swaggerSpec = swaggerJSDoc({
       },
       schemas: swaggerSchemas,
     },
+
     security: [{ bearerAuth: [] }],
   },
   apis: ["src/routes/*.ts"],

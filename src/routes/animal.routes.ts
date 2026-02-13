@@ -1,3 +1,176 @@
+
+// Documentation for Animal routes
+
+
+/**
+ * @openapi
+ * tags:
+ *   - name: Livestock
+ *     description: Animals and species management within a ranch
+ */
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals:
+ *   post:
+ *     tags: [Livestock]
+ *     summary: Create an animal in a ranch
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateAnimalRequest'
+ *     responses:
+ *       201:
+ *         description: Animal created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CreateAnimalResponse'
+ *       400:
+ *         description: Invalid payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       500:
+ *         description: Server error
+ *
+ *   get:
+ *     tags: [Livestock]
+ *     summary: List animals in a ranch
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *     responses:
+ *       200:
+ *         description: Animals list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 animals:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Animal'
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       500:
+ *         description: Server error
+ */
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals/{id}:
+ *   get:
+ *     tags: [Livestock]
+ *     summary: Get an animal by internal ID (ranch scoped)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Animal details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Animal'
+ *       404:
+ *         description: Animal not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       500:
+ *         description: Server error
+ */
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals/{id}/qr:
+ *   get:
+ *     tags: [QR]
+ *     summary: Generate QR code PNG for an animal
+ *     description: Returns a PNG image for printing animal tags. QR encodes the public scan URL (/a/{publicId}).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: PNG QR code image
+ *         content:
+ *           image/png:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       404:
+ *         description: Animal not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       500:
+ *         description: Server error
+ */
+
+
+// Import necessary modules and middlewares
+
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { requireRanchAccess } from "../middlewares/ranchAccess";

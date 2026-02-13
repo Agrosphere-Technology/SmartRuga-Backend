@@ -164,4 +164,66 @@ export const swaggerSchemas = {
       platformRole: { type: "string", enum: ["user", "admin", "super_admin"] },
     },
   },
+
+  // sprint 2 additions
+  Species: {
+    type: "object",
+    properties: {
+      id: { type: "string", format: "uuid" },
+      name: { type: "string", example: "Cow" },
+      code: { type: "string", example: "cow" },
+    },
+    required: ["id", "name", "code"],
+  },
+
+  AnimalPublic: {
+    type: "object",
+    properties: {
+      publicId: { type: "string", format: "uuid" },
+      tagNumber: { type: ["string", "null"], example: "COW-001" },
+      sex: { type: "string", enum: ["male", "female", "unknown"], example: "female" },
+      status: { type: "string", enum: ["active", "sold", "deceased"], example: "active" },
+      species: { $ref: "#/components/schemas/Species" },
+    },
+    required: ["publicId", "sex", "status", "species"],
+  },
+
+  Animal: {
+    allOf: [
+      { $ref: "#/components/schemas/AnimalPublic" },
+      {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          qrUrl: { type: "string", example: "http://localhost:5000/a/2c99c39d-ea93-499c-93bb-51c4e0cb39ed" },
+          dateOfBirth: { type: ["string", "null"], format: "date", example: "2023-05-01" },
+          createdAt: { type: ["string", "null"], format: "date-time" },
+          updatedAt: { type: ["string", "null"], format: "date-time" },
+        },
+        required: ["id", "qrUrl"],
+      },
+    ],
+  },
+
+  CreateAnimalRequest: {
+    type: "object",
+    properties: {
+      speciesId: { type: "string", format: "uuid" },
+      tagNumber: { type: "string", example: "COW-001" },
+      sex: { type: "string", enum: ["male", "female", "unknown"], example: "female" },
+      dateOfBirth: { type: "string", format: "date", example: "2023-05-01" },
+    },
+    required: ["speciesId"],
+  },
+
+  CreateAnimalResponse: {
+    type: "object",
+    properties: {
+      id: { type: "string", format: "uuid" },
+      publicId: { type: "string", format: "uuid" },
+      qrUrl: { type: "string" },
+    },
+    required: ["id", "publicId", "qrUrl"],
+  },
+
 };
