@@ -6,6 +6,7 @@ import {
   getAnimalById,
   listAnimals,
 } from "../controllers/animal.controller";
+import { getAnimalQrPng } from "../controllers/animalQr.controller";
 
 const router = Router({ mergeParams: true });
 
@@ -28,6 +29,14 @@ router.get(
   requireAuth(),
   requireRanchAccess("slug"),
   getAnimalById,
+);
+
+// generate qr code/image
+router.get(
+  "/:slug/animals/:id/qr",
+  requireAuth(),
+  requireRanchAccess("slug"),
+  getAnimalQrPng
 );
 
 export default router;
