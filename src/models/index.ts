@@ -7,6 +7,7 @@ import { SpecieFactory } from "./specie.model";
 import { InviteFactory } from "./invite.model";
 import { RefreshTokenFactory } from "./refreshToken.model";
 import { AnimalFactory } from "./animal.model";
+import { AnimalHealthEventFactory } from "./animalHealthEvent.model";
 
 export const sequelize = new Sequelize(process.env.DATABASE_URL!, {
   dialect: "postgres",
@@ -29,6 +30,7 @@ export const Species = SpecieFactory(sequelize);
 export const Invite = InviteFactory(sequelize);
 export const RefreshToken = RefreshTokenFactory(sequelize);
 export const Animal = AnimalFactory(sequelize);
+export const AnimalHealthEvent = AnimalHealthEventFactory(sequelize);
 
 // Associations
 User.hasMany(Ranch, { foreignKey: "created_by", as: "createdRanches" });
@@ -56,3 +58,8 @@ Animal.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 // Species ↔ Animals
 Species.hasMany(Animal, { foreignKey: "species_id", as: "animals" });
 Animal.belongsTo(Species, { foreignKey: "species_id", as: "species" });
+
+
+Animal.hasMany(AnimalHealthEvent, { foreignKey: "animal_id", as: "healthEvents" });
+
+AnimalHealthEvent.belongsTo(Animal, { foreignKey: "animal_id", as: "animal" });
