@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
-import { Animal, Species } from "../models";
+import { Animal, AnimalHealthEvent, sequelize, Species } from "../models";
 import { buildAnimalQrUrl } from "../utils/qr";
 import { RANCH_ROLES } from "../constants/roles";
 
@@ -72,33 +72,54 @@ export async function listAnimals(req: Request, res: Response) {
   try {
     const ranchId = req.ranch!.id;
 
+    // 1️⃣ Fetch animals
     const animals = await Animal.findAll({
       where: { ranch_id: ranchId },
       include: [
-        {
-          model: Species,
-          as: "species",
-          attributes: ["id", "name", "code"],
-        },
+        { model: Species, as: "species", attributes: ["id", "name", "code"] },
       ],
       order: [["created_at", "DESC"]],
     });
 
+    if (!animals.length) {
+      return res.json({ animals: [] });
+    }
+
+    const animalIds = animals.map((a: any) => a.get("id"));
+
+    // 2️⃣ Fetch latest health event per animal (ONE query)
+    const latestHealthEvents = await AnimalHealthEvent.findAll({
+      where: { animal_id: animalIds },
+      attributes: [
+        "animal_id",
+        "status",
+        [sequelize.fn("MAX", sequelize.col("created_at")), "latest"],
+      ],
+      group: ["animal_id", "status"],
+      raw: true,
+    });
+
+    // 3️⃣ Build lookup map
+    const healthMap = new Map<string, string>();
+    for (const h of latestHealthEvents as any[]) {
+      healthMap.set(h.animal_id, h.status);
+    }
+
+    // 4️⃣ Response
     return res.json({
-      animals: animals.map((animal) => ({
+      animals: animals.map((animal: any) => ({
         id: animal.get("id"),
         publicId: animal.get("public_id"),
         tagNumber: animal.get("tag_number"),
         sex: animal.get("sex"),
         status: animal.get("status"),
-        species: (animal as any).species,
+        healthStatus: healthMap.get(animal.get("id")) ?? "healthy",
+        species: animal.species,
       })),
     });
   } catch (err: any) {
     console.error("LIST_ANIMALS_ERROR:", err);
-    return res
-      .status(StatusCodes.INTERNAL_SERVER_ERROR)
-      .json({ message: "Failed to list animals" });
+    return res.status(500).json({ message: "Failed to list animals" });
   }
 }
 
