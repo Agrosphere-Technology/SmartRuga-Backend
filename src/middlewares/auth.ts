@@ -27,7 +27,17 @@ export const requireAuth =
         ) as AccessPayload;
 
         const user = await User.findByPk(decoded.userId);
+
         if (!user) return res.status(401).json({ message: "User not found" });
+
+        // block deactivated / soft-deleted users
+        if (user.get("deleted_at")) {
+          return res.status(401).json({ message: "Account deactivated" });
+        }
+
+        if (user.get("is_active") === false) {
+          return res.status(401).json({ message: "Account deactivated" });
+        }
 
         req.user = {
           id: user.get("id") as string,
