@@ -231,4 +231,29 @@ export const swaggerSchemas = {
     required: ["id", "publicId", "qrUrl"],
   },
 
+  HealthEvent: {
+    type: "object",
+    properties: {
+      id: { type: "string", format: "uuid" },
+      status: {
+        type: "string",
+        enum: ["healthy", "sick", "recovering", "quarantined"],
+      },
+      notes: { type: ["string", "null"] },
+      createdAt: { type: "string", format: "date-time" },
+    },
+    required: ["id", "status", "createdAt"],
+  },
+
+  ListHealthEventsResponse: {
+    type: "object",
+    properties: {
+      healthEvents: {
+        type: "array",
+        items: { $ref: "#/components/schemas/HealthEvent" },
+      },
+    },
+    required: ["healthEvents"],
+  },
+
 };

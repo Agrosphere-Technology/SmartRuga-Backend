@@ -77,7 +77,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { requireRanchAccess } from "../middlewares/ranchAccess";
-import { addAnimalHealthEvent, listAnimalHealthEvents } from "../controllers/animalHealth.controller";
+import { addAnimalHealthEvent, listAnimalHealth } from "../controllers/animalHealth.controller";
 
 const router = Router({ mergeParams: true });
 
@@ -88,11 +88,12 @@ router.post(
     addAnimalHealthEvent
 );
 
+// GET /api/v1/ranches/:slug/animals/:animalId/health
 router.get(
     "/:slug/animals/:animalId/health",
     requireAuth(),
     requireRanchAccess("slug"),
-    listAnimalHealthEvents
+    listAnimalHealth
 );
 
 export default router;

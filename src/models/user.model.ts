@@ -16,6 +16,8 @@ export class UserModel extends Model<
   declare email: string;
   declare password_hash: string;
   declare platform_role: "user" | "admin" | "super_admin";
+  declare is_active: boolean;
+  declare deleted_at: Date | null;
 }
 
 export function UserFactory(sequelize: Sequelize) {
@@ -37,6 +39,8 @@ export function UserFactory(sequelize: Sequelize) {
         allowNull: false,
         defaultValue: "user",
       },
+      is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+      deleted_at: { type: DataTypes.DATE, allowNull: true },
     },
     {
       tableName: "users",
