@@ -1,10 +1,9 @@
+// src/controllers/qr.controller.ts
 import { Request, Response } from "express";
-import { QueryTypes } from "sequelize";
-import { Animal, Species, sequelize } from "../models";
+import { Animal, Species } from "../models";
 import { buildAnimalQrUrl } from "../utils/qr";
 import { StatusCodes } from "http-status-codes";
-
-type LatestHealthRow = { status: string };
+import { getLatestHealthForAnimals } from "../services/animalHealth.service";
 
 export async function qrScanAnimal(req: Request, res: Response) {
   try {
@@ -21,22 +20,11 @@ export async function qrScanAnimal(req: Request, res: Response) {
       return res.status(StatusCodes.NOT_FOUND).send("Animal not found");
     }
 
-    // ✅ latest health status (single animal)
-    const rows = await sequelize.query<LatestHealthRow>(
-      `
-      SELECT status
-      FROM animal_health_events
-      WHERE animal_id = $1
-      ORDER BY created_at DESC
-      LIMIT 1
-      `,
-      {
-        bind: [animal.get("id") as string],
-        type: QueryTypes.SELECT,
-      }
-    );
+    const animalId = animal.get("id") as string;
 
-    const healthStatus = rows[0]?.status ?? "healthy";
+    // ✅ latest health (from service)
+    const healthMap = await getLatestHealthForAnimals([animalId]);
+    const healthStatus = healthMap[animalId] ?? "healthy";
 
     const accept = req.headers.accept || "";
     if (accept.includes("text/html")) {

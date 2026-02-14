@@ -152,13 +152,30 @@ export async function getAnimalById(req: Request, res: Response) {
           attributes: ["id", "name", "code"],
         },
       ],
-    });
+    } as any);
 
     if (!animal) {
       return res
         .status(StatusCodes.NOT_FOUND)
         .json({ message: "Animal not found" });
     }
+
+    // ✅ latest health status
+    const rows = await sequelize.query<{ status: string }>(
+      `
+        SELECT status
+        FROM animal_health_events
+        WHERE animal_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+      {
+        bind: [id],
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    const healthStatus = rows[0]?.status ?? "healthy";
 
     return res.json({
       id: animal.get("id"),
@@ -168,6 +185,7 @@ export async function getAnimalById(req: Request, res: Response) {
       sex: animal.get("sex"),
       dateOfBirth: animal.get("date_of_birth"),
       status: animal.get("status"),
+      healthStatus,
       species: (animal as any).species,
       createdAt: animal.get("created_at"),
       updatedAt: animal.get("updated_at"),

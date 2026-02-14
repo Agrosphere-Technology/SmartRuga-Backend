@@ -12,6 +12,7 @@ import inviteRoutes from "./routes/invite.routes";
 import ranchInviteRoutes from "./routes/ranchInvite.routes";
 import animalRoutes from "./routes/animal.routes";
 import animalHealthEventRoutes from "./routes/animalHealth.routes";
+import speciesRoutes from "./routes/species.routes";
 import qrRoutes from "./routes/qr.routes";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./docs/swagger";
@@ -58,6 +59,7 @@ app.use("/api/v1/invites", inviteRoutes);
 app.use("/api/v1/ranches", ranchInviteRoutes);
 app.use("/api/v1/ranches", animalRoutes);
 app.use("/api/v1/ranches", animalHealthEventRoutes);
+app.use("/api/v1", speciesRoutes);
 app.use(qrRoutes);
 
 // Swagger docs (enable/disable with env)

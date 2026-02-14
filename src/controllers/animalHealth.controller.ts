@@ -1,10 +1,10 @@
-// src/controllers/animalHealth.controller.ts
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { QueryTypes } from "sequelize";
+import z from "zod";
+
 import { Animal, sequelize } from "../models";
 import { RANCH_ROLES } from "../constants/roles";
-import { z } from "zod";
 
 type InsertedHealthEventRow = {
     id: string;
@@ -12,6 +12,13 @@ type InsertedHealthEventRow = {
     status: "healthy" | "sick" | "recovering" | "quarantined";
     notes: string | null;
     recorded_by: string;
+    created_at: Date;
+};
+
+type HealthEventRow = {
+    id: string;
+    status: "healthy" | "sick" | "recovering" | "quarantined";
+    notes: string | null;
     created_at: Date;
 };
 
@@ -27,15 +34,39 @@ type HealthHistoryRow = {
     created_at: Date;
 };
 
+type CountRow = { count: string };
+
 const addHealthSchema = z.object({
     status: z.enum(["healthy", "sick", "recovering", "quarantined"]),
     notes: z.string().max(500).optional().nullable(),
 });
 
-/**
- * POST /api/v1/ranches/:slug/animals/:animalId/health
- * Add a health event for an animal (owner/manager/vet only)
- */
+const historyQuerySchema = z.object({
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+    status: z.enum(["healthy", "sick", "recovering", "quarantined"]).optional(),
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+});
+
+function canAddHealth(role: string) {
+    return (
+        role === RANCH_ROLES.OWNER ||
+        role === RANCH_ROLES.MANAGER ||
+        role === RANCH_ROLES.VET
+    );
+}
+
+function canViewHealth(role: string) {
+    // you can loosen this later if you want all active members to view
+    return (
+        role === RANCH_ROLES.OWNER ||
+        role === RANCH_ROLES.MANAGER ||
+        role === RANCH_ROLES.VET
+    );
+}
+
+// POST /api/v1/ranches/:slug/animals/:animalId/health
 export async function addAnimalHealthEvent(req: Request, res: Response) {
     try {
         const parsed = addHealthSchema.safeParse(req.body);
@@ -46,26 +77,19 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
             });
         }
 
+        const ranchId = req.ranch!.id;
+        const { animalId } = req.params;
+
         const requesterRole = req.membership!.ranchRole;
-
-        const canAddHealth =
-            requesterRole === RANCH_ROLES.OWNER ||
-            requesterRole === RANCH_ROLES.MANAGER ||
-            requesterRole === RANCH_ROLES.VET;
-
-        if (!canAddHealth) {
+        if (!canAddHealth(requesterRole)) {
             return res.status(StatusCodes.FORBIDDEN).json({
                 message: "Only owner/manager/vet can add health records",
             });
         }
 
-        const ranchId = req.ranch!.id;
-        const { animalId } = req.params;
-
-        // Ensure animal belongs to ranch
         const animal = await Animal.findOne({
             where: { id: animalId, ranch_id: ranchId },
-            attributes: ["public_id", "tag_number"],
+            attributes: ["id", "public_id", "tag_number"],
         } as any);
 
         if (!animal) {
@@ -74,10 +98,10 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
                 .json({ message: "Animal not found" });
         }
 
-        const recorderId = req.user!.id;
         const { status, notes } = parsed.data;
+        const recorderId = req.user!.id;
 
-        // INSERT + RETURNING (typed as SELECT due to Sequelize TS overloads)
+        // INSERT + RETURNING (use QueryTypes.SELECT in Sequelize typings)
         const rows = await sequelize.query<InsertedHealthEventRow>(
             `
       INSERT INTO animal_health_events (id, animal_id, status, notes, recorded_by, created_at)
@@ -95,6 +119,7 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
         return res.status(StatusCodes.CREATED).json({
             message: "Health event recorded",
             animal: {
+                id: animal.get("id"),
                 publicId: animal.get("public_id"),
                 tagNumber: animal.get("tag_number"),
             },
@@ -105,8 +130,7 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
                 recordedBy: event.recorded_by,
                 createdAt: event.created_at,
             },
-            // convenience: latest health status
-            healthStatus: event.status,
+            healthStatus: event.status, // latest health
         });
     } catch (err: any) {
         console.error("ADD_ANIMAL_HEALTH_ERROR:", err);
@@ -118,32 +142,16 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
     }
 }
 
-/**
- * GET /api/v1/ranches/:slug/animals/:animalId/health
- * List health history (owner/manager/vet only)
- */
-export async function listAnimalHealthHistory(req: Request, res: Response) {
+// GET /api/v1/ranches/:slug/animals/:animalId/health
+// (simple list: status+notes+createdAt)
+export async function listAnimalHealth(req: Request, res: Response) {
     try {
-        const requesterRole = req.membership!.ranchRole;
-
-        const canView =
-            requesterRole === RANCH_ROLES.OWNER ||
-            requesterRole === RANCH_ROLES.MANAGER ||
-            requesterRole === RANCH_ROLES.VET;
-
-        if (!canView) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can view health history",
-            });
-        }
-
         const ranchId = req.ranch!.id;
         const { animalId } = req.params;
 
-        // Ensure animal belongs to ranch
         const animal = await Animal.findOne({
             where: { id: animalId, ranch_id: ranchId },
-            attributes: ["public_id", "tag_number"],
+            attributes: ["id"],
         } as any);
 
         if (!animal) {
@@ -152,6 +160,172 @@ export async function listAnimalHealthHistory(req: Request, res: Response) {
                 .json({ message: "Animal not found" });
         }
 
+        const rows = await sequelize.query<HealthEventRow>(
+            `
+      SELECT id, status, notes, created_at
+      FROM animal_health_events
+      WHERE animal_id = $1
+      ORDER BY created_at DESC
+      `,
+            {
+                bind: [animalId],
+                type: QueryTypes.SELECT,
+            }
+        );
+
+        return res.status(StatusCodes.OK).json({
+            healthEvents: rows.map((r) => ({
+                id: r.id,
+                status: r.status,
+                notes: r.notes,
+                createdAt: r.created_at,
+            })),
+        });
+    } catch (err: any) {
+        console.error("LIST_ANIMAL_HEALTH_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to list animal health history",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}
+
+// GET /api/v1/ranches/:slug/animals/:animalId/health/latest
+export async function getAnimalLatestHealth(req: Request, res: Response) {
+    try {
+        const requesterRole = req.membership!.ranchRole;
+        if (!canViewHealth(requesterRole)) {
+            return res
+                .status(StatusCodes.FORBIDDEN)
+                .json({ message: "Only owner/manager/vet can view health" });
+        }
+
+        const ranchId = req.ranch!.id;
+        const { animalId } = req.params;
+
+        const animal = await Animal.findOne({
+            where: { id: animalId, ranch_id: ranchId },
+            attributes: ["id", "public_id", "tag_number"],
+        } as any);
+
+        if (!animal) {
+            return res
+                .status(StatusCodes.NOT_FOUND)
+                .json({ message: "Animal not found" });
+        }
+
+        const rows = await sequelize.query<HealthEventRow>(
+            `
+      SELECT id, status, notes, created_at
+      FROM animal_health_events
+      WHERE animal_id = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+            { bind: [animalId], type: QueryTypes.SELECT }
+        );
+
+        const latest = rows[0] ?? null;
+
+        return res.status(StatusCodes.OK).json({
+            animal: {
+                id: animal.get("id"),
+                publicId: animal.get("public_id"),
+                tagNumber: animal.get("tag_number"),
+            },
+            latest: latest
+                ? {
+                    id: latest.id,
+                    status: latest.status,
+                    notes: latest.notes,
+                    createdAt: latest.created_at,
+                }
+                : null,
+            healthStatus: latest?.status ?? "healthy",
+        });
+    } catch (err: any) {
+        console.error("GET_LATEST_HEALTH_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to fetch latest health",
+            error: err?.message ?? "Unknown error",
+            details: err?.errors ?? null,
+        });
+    }
+}
+
+// GET /api/v1/ranches/:slug/animals/:animalId/health/history?page=&limit=&status=&from=&to=
+export async function listAnimalHealthHistory(req: Request, res: Response) {
+    try {
+        const requesterRole = req.membership!.ranchRole;
+        if (!canViewHealth(requesterRole)) {
+            return res.status(StatusCodes.FORBIDDEN).json({
+                message: "Only owner/manager/vet can view health history",
+            });
+        }
+
+        const ranchId = req.ranch!.id;
+        const { animalId } = req.params;
+
+        const qp = historyQuerySchema.safeParse(req.query);
+        if (!qp.success) {
+            return res.status(StatusCodes.BAD_REQUEST).json({
+                message: "Invalid query params",
+                issues: qp.error.issues,
+            });
+        }
+
+        const { page, limit, status, from, to } = qp.data;
+        const offset = (page - 1) * limit;
+
+        // ensure animal belongs to ranch
+        const animal = await Animal.findOne({
+            where: { id: animalId, ranch_id: ranchId },
+            attributes: ["id", "public_id", "tag_number"],
+        } as any);
+
+        if (!animal) {
+            return res
+                .status(StatusCodes.NOT_FOUND)
+                .json({ message: "Animal not found" });
+        }
+
+        // dynamic WHERE
+        const whereParts: string[] = ["e.animal_id = $1"];
+        const bind: any[] = [animalId];
+        let i = 2;
+
+        if (status) {
+            whereParts.push(`e.status = $${i}`);
+            bind.push(status);
+            i++;
+        }
+        if (from) {
+            whereParts.push(`e.created_at >= $${i}`);
+            bind.push(new Date(from));
+            i++;
+        }
+        if (to) {
+            whereParts.push(`e.created_at <= $${i}`);
+            bind.push(new Date(to));
+            i++;
+        }
+
+        const whereSql = whereParts.join(" AND ");
+
+        // total count
+        const countRows = await sequelize.query<CountRow>(
+            `
+      SELECT COUNT(*)::text as count
+      FROM animal_health_events e
+      WHERE ${whereSql}
+      `,
+            { bind, type: QueryTypes.SELECT }
+        );
+
+        const total = Number(countRows[0]?.count ?? "0");
+
+        // data rows
+        const dataBind = [...bind, limit, offset];
         const rows = await sequelize.query<HealthHistoryRow>(
             `
       SELECT
@@ -166,23 +340,28 @@ export async function listAnimalHealthHistory(req: Request, res: Response) {
         e.created_at
       FROM animal_health_events e
       JOIN users u ON u.id = e.recorded_by
-      WHERE e.animal_id = $1
+      WHERE ${whereSql}
       ORDER BY e.created_at DESC
+      LIMIT $${i} OFFSET $${i + 1}
       `,
             {
-                bind: [animalId],
+                bind: dataBind,
                 type: QueryTypes.SELECT,
             }
         );
 
-        const currentHealthStatus = rows[0]?.status ?? "unknown";
-
         return res.status(StatusCodes.OK).json({
             animal: {
+                id: animal.get("id"),
                 publicId: animal.get("public_id"),
                 tagNumber: animal.get("tag_number"),
             },
-            healthStatus: currentHealthStatus,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+            },
             events: rows.map((r) => ({
                 id: r.id,
                 status: r.status,
