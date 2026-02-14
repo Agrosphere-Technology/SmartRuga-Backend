@@ -1,8 +1,14 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { Animal, AnimalHealthEvent, sequelize, Species } from "../models";
+import { QueryTypes } from "sequelize";
 import { buildAnimalQrUrl } from "../utils/qr";
 import { RANCH_ROLES } from "../constants/roles";
+
+type LatestHealthRow = {
+  animal_id: string;
+  status: string;
+};
 
 // Create Animals
 export async function createAnimal(req: Request, res: Response) {
@@ -72,54 +78,62 @@ export async function listAnimals(req: Request, res: Response) {
   try {
     const ranchId = req.ranch!.id;
 
-    // 1️⃣ Fetch animals
     const animals = await Animal.findAll({
       where: { ranch_id: ranchId },
       include: [
-        { model: Species, as: "species", attributes: ["id", "name", "code"] },
+        {
+          model: Species,
+          as: "species",
+          attributes: ["id", "name", "code"],
+        },
       ],
       order: [["created_at", "DESC"]],
-    });
+    } as any);
 
-    if (!animals.length) {
-      return res.json({ animals: [] });
-    }
+    if (animals.length === 0) return res.json({ animals: [] });
 
-    const animalIds = animals.map((a: any) => a.get("id"));
+    const animalIds = animals.map((a: any) => a.get("id") as string);
 
-    // 2️⃣ Fetch latest health event per animal (ONE query)
-    const latestHealthEvents = await AnimalHealthEvent.findAll({
-      where: { animal_id: animalIds },
-      attributes: [
-        "animal_id",
-        "status",
-        [sequelize.fn("MAX", sequelize.col("created_at")), "latest"],
-      ],
-      group: ["animal_id", "status"],
-      raw: true,
-    });
+    const latestHealthRows = await sequelize.query<LatestHealthRow>(
+      `
+      SELECT DISTINCT ON (animal_id)
+        animal_id,
+        status
+      FROM animal_health_events
+      WHERE animal_id = ANY($1::uuid[])
+      ORDER BY animal_id, created_at DESC
+      `,
+      {
+        bind: [animalIds],
+        type: QueryTypes.SELECT,
+      }
+    );
 
-    // 3️⃣ Build lookup map
     const healthMap = new Map<string, string>();
-    for (const h of latestHealthEvents as any[]) {
-      healthMap.set(h.animal_id, h.status);
+    for (const row of latestHealthRows) {
+      healthMap.set(row.animal_id, row.status);
     }
 
-    // 4️⃣ Response
-    return res.json({
-      animals: animals.map((animal: any) => ({
-        id: animal.get("id"),
-        publicId: animal.get("public_id"),
-        tagNumber: animal.get("tag_number"),
-        sex: animal.get("sex"),
-        status: animal.get("status"),
-        healthStatus: healthMap.get(animal.get("id")) ?? "healthy",
-        species: animal.species,
-      })),
+    return res.status(StatusCodes.OK).json({
+      animals: animals.map((animal: any) => {
+        const id = animal.get("id") as string;
+        return {
+          id,
+          publicId: animal.get("public_id"),
+          tagNumber: animal.get("tag_number"),
+          sex: animal.get("sex"),
+          status: animal.get("status"),
+          healthStatus: healthMap.get(id) ?? "healthy",
+          species: (animal as any).species,
+        };
+      }),
     });
   } catch (err: any) {
     console.error("LIST_ANIMALS_ERROR:", err);
-    return res.status(500).json({ message: "Failed to list animals" });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      message: "Failed to list animals",
+      error: err?.message ?? "Unknown error",
+    });
   }
 }
 

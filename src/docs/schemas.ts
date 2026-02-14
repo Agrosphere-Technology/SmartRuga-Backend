@@ -183,9 +183,14 @@ export const swaggerSchemas = {
       tagNumber: { type: ["string", "null"], example: "COW-001" },
       sex: { type: "string", enum: ["male", "female", "unknown"], example: "female" },
       status: { type: "string", enum: ["active", "sold", "deceased"], example: "active" },
+      healthStatus: {
+        type: "string",
+        enum: ["healthy", "sick", "recovering", "quarantined"],
+        example: "healthy",
+      },
       species: { $ref: "#/components/schemas/Species" },
     },
-    required: ["publicId", "sex", "status", "species"],
+    required: ["publicId", "sex", "status", "healthStatus", "species"],
   },
 
   Animal: {
