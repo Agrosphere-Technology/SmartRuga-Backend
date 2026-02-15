@@ -1,7 +1,12 @@
+import path from "path";
 import "dotenv/config";
-
 import swaggerJSDoc from "swagger-jsdoc";
 import { swaggerSchemas } from "./schemas";
+
+const apis = [
+  path.join(process.cwd(), "src/routes/*.ts"),   // dev
+  path.join(process.cwd(), "dist/routes/*.js"),  // prod (Heroku)
+];
 
 export const swaggerSpec = swaggerJSDoc({
   definition: {
@@ -9,8 +14,8 @@ export const swaggerSpec = swaggerJSDoc({
     info: { title: "SmartRUGA API", version: "1.0.0" },
     servers: [
       {
-        url: process.env.BASE_URL,
-        description: "Local",
+        url: process.env.BASE_URL || "http://localhost:5000",
+        description: "API Server",
       },
     ],
     components: {
@@ -19,8 +24,7 @@ export const swaggerSpec = swaggerJSDoc({
       },
       schemas: swaggerSchemas,
     },
-
     security: [{ bearerAuth: [] }],
   },
-  apis: ["src/routes/*.ts"],
+  apis,
 });
