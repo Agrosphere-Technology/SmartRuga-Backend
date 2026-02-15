@@ -14,6 +14,10 @@ export async function updateUserPlatformRole(req: Request, res: Response) {
     }
 
     const targetUserId = req.params.id;
+
+    if (typeof targetUserId !== "string") {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "target user Id must be a string" });
+    }
     const newRole = parsed.data
       .platformRole as (typeof PLATFORM_ROLES)[keyof typeof PLATFORM_ROLES];
 
