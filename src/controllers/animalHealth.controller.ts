@@ -216,12 +216,12 @@ export async function getAnimalLatestHealth(req: Request, res: Response) {
 
         const rows = await sequelize.query<HealthEventRow>(
             `
-      SELECT id, status, notes, created_at
-      FROM animal_health_events
-      WHERE animal_id = $1
-      ORDER BY created_at DESC
-      LIMIT 1
-      `,
+                SELECT id, status, notes, created_at
+                FROM animal_health_events
+                WHERE animal_id = $1
+                ORDER BY created_at DESC
+                LIMIT 1
+            `,
             { bind: [animalId], type: QueryTypes.SELECT }
         );
 
