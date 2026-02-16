@@ -126,6 +126,69 @@
 
 /**
  * @openapi
+ * /api/v1/ranches/{slug}/animals/{id}:
+ *   patch:
+ *     tags: [Livestock]
+ *     summary: Update an animal (partial update)
+ *     description: Updates one or more animal fields. Only owner/manager/vet can update.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema: { type: string }
+ *         example: test-wolf-ranch
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateAnimalRequest'
+ *     responses:
+ *       200:
+ *         description: Animal updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UpdateAnimalResponse'
+ *       400:
+ *         description: Invalid payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Animal not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: Tag number already exists in this ranch
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+
+
+/**
+ * @openapi
  * /api/v1/ranches/{slug}/animals/{id}/qr:
  *   get:
  *     tags: [QR]
@@ -178,6 +241,7 @@ import {
   createAnimal,
   getAnimalById,
   listAnimals,
+  updateAnimal,
 } from "../controllers/animal.controller";
 import { getAnimalQrPng } from "../controllers/animalQr.controller";
 
@@ -202,6 +266,13 @@ router.get(
   requireAuth(),
   requireRanchAccess("slug"),
   getAnimalById,
+);
+
+router.patch(
+  "/:slug/animals/:id",
+  requireAuth(),
+  requireRanchAccess("slug"),
+  updateAnimal
 );
 
 // generate qr code/image

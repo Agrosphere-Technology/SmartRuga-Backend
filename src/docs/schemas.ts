@@ -413,6 +413,42 @@ export const swaggerSchemas = {
     required: ["publicId", "sex", "status", "healthStatus", "species"],
   },
 
+  // UpdateAnimalResponse
+
+  UpdateAnimalRequest: {
+    type: "object",
+    properties: {
+      speciesId: { type: "string", format: "uuid" },
+      tagNumber: { type: ["string", "null"], example: "COW-002" },
+      sex: { type: "string", enum: ["male", "female", "unknown"] },
+      dateOfBirth: { type: ["string", "null"], format: "date", example: "2023-05-01" },
+      status: { type: "string", enum: ["active", "sold", "deceased"] },
+    },
+    additionalProperties: false,
+  },
+
+  UpdateAnimalResponse: {
+    type: "object",
+    properties: {
+      message: { type: "string", example: "Animal updated" },
+      animal: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          publicId: { type: "string", format: "uuid" },
+          tagNumber: { type: ["string", "null"] },
+          sex: { type: "string", enum: ["male", "female", "unknown"] },
+          dateOfBirth: { type: ["string", "null"], format: "date" },
+          status: { type: "string", enum: ["active", "sold", "deceased"] },
+          speciesId: { type: "string", format: "uuid" },
+          updatedAt: { type: ["string", "null"], format: "date-time" },
+        },
+        required: ["id", "publicId", "sex", "status", "speciesId"],
+      },
+    },
+    required: ["message", "animal"],
+  },
+
 };
 
 

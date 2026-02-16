@@ -4,31 +4,33 @@ import { Animal, AnimalHealthEvent, sequelize, Species } from "../models";
 import { Op, QueryTypes } from "sequelize";
 import { buildAnimalQrUrl } from "../utils/qr";
 import { RANCH_ROLES } from "../constants/roles";
-import z from "zod";
+import { listAnimalsQuerySchema, updateAnimalSchema } from "../validators/animal.validator";
+import { AnimalActivityEvent } from "../models";
 
 type LatestHealthRow = {
   animal_id: string;
   status: string;
 };
 
-const listAnimalsQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+type StatusEnum = "active" | "sold" | "deceased";
 
-  // filters
-  speciesId: z.string().uuid().optional(),
-  status: z.enum(["active", "sold", "deceased"]).optional(),
-  sex: z.enum(["male", "female", "unknown"]).optional(),
-  healthStatus: z.enum(["healthy", "sick", "recovering", "quarantined"]).optional(),
+type InsertedStatusEventRow = {
+  id: string;
+  animal_id: string;
+  from_status: StatusEnum;
+  to_status: StatusEnum;
+  notes: string | null;
+  recorded_by: string;
+  created_at: Date;
+};
 
-  // search (tag)
-  q: z.string().trim().min(1).max(100).optional(),
+function canTransition(from: StatusEnum, to: StatusEnum) {
+  if (from === to) return true;
+  if (from === "active" && (to === "sold" || to === "deceased")) return true;
 
-  // sort
-  sortBy: z.enum(["createdAt", "tagNumber"]).default("createdAt"),
-  sortOrder: z.enum(["asc", "desc"]).default("desc"),
-});
-
+  // disallow re-activating sold/deceased unless you later decide otherwise
+  return false;
+}
 
 // Create Animals
 export async function createAnimal(req: Request, res: Response) {
@@ -80,7 +82,7 @@ export async function createAnimal(req: Request, res: Response) {
     });
 
     return res.status(StatusCodes.CREATED).json({
-      id: animal.get("id"),
+      id: animal.get("id") as string,
       publicId: animal.get("public_id"),
       qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
     });
@@ -318,7 +320,7 @@ export async function getAnimalById(req: Request, res: Response) {
     const healthStatus = rows[0]?.status ?? "healthy";
 
     return res.json({
-      id: animal.get("id"),
+      id: animal.get("id") as string,
       publicId: animal.get("public_id"),
       qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
       tagNumber: animal.get("tag_number"),
@@ -335,5 +337,206 @@ export async function getAnimalById(req: Request, res: Response) {
     return res
       .status(StatusCodes.INTERNAL_SERVER_ERROR)
       .json({ message: "Failed to fetch animal" });
+  }
+}
+
+// Update Animal
+
+export async function updateAnimal(req: Request, res: Response) {
+  try {
+    const parsed = updateAnimalSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        message: "Invalid payload",
+        issues: parsed.error.issues,
+      });
+    }
+
+    const ranchId = req.ranch!.id;
+    const { id } = req.params;
+    const recorderId = req.user!.id;
+
+    const requesterRole = req.membership!.ranchRole;
+    const canUpdate =
+      requesterRole === RANCH_ROLES.OWNER ||
+      requesterRole === RANCH_ROLES.MANAGER ||
+      requesterRole === RANCH_ROLES.VET;
+
+    if (!canUpdate) {
+      return res
+        .status(StatusCodes.FORBIDDEN)
+        .json({ message: "Not allowed to update animals" });
+    }
+
+    const animal = await Animal.findOne({
+      where: { id, ranch_id: ranchId },
+    } as any);
+
+    if (!animal) {
+      return res
+        .status(StatusCodes.NOT_FOUND)
+        .json({ message: "Animal not found" });
+    }
+
+    // ✅ include optional statusNotes in your schema (see note below)
+    const { speciesId, tagNumber, sex, dateOfBirth, status, statusNotes } =
+      parsed.data as any;
+
+    // ✅ If speciesId provided, must exist
+    if (speciesId) {
+      const species = await Species.findByPk(speciesId);
+      if (!species) {
+        return res
+          .status(StatusCodes.BAD_REQUEST)
+          .json({ message: "Invalid species" });
+      }
+    }
+
+    // ✅ If tagNumber provided, prevent duplicates in same ranch (excluding this animal)
+    if (tagNumber !== undefined) {
+      const normalized =
+        tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
+
+      if (normalized) {
+        const dup = await Animal.findOne({
+          where: { ranch_id: ranchId, tag_number: normalized },
+        } as any);
+
+        if (dup && (dup.get("id") as string) !== (animal.get("id") as string)) {
+          return res.status(StatusCodes.CONFLICT).json({
+            message: "Tag number already exists in this ranch",
+          });
+        }
+      }
+    }
+
+    // ✅ Status transition + event logging
+    const currentStatus = animal.get("status") as StatusEnum;
+
+    if (status !== undefined && status !== null) {
+      const nextStatus = status as StatusEnum;
+
+      // validate transition
+      if (!canTransition(currentStatus, nextStatus)) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          message: `Invalid status transition: ${currentStatus} -> ${nextStatus}`,
+        });
+      }
+
+      // require note for sold/deceased transitions (only when changing)
+      const isChanging = currentStatus !== nextStatus;
+      const requiresNote = nextStatus === "sold" || nextStatus === "deceased";
+
+      if (isChanging && requiresNote) {
+        const note = (statusNotes ?? "").toString().trim();
+        if (!note) {
+          return res.status(StatusCodes.BAD_REQUEST).json({
+            message: "statusNotes is required when status is sold or deceased",
+          });
+        }
+      }
+
+      // if changing, insert status event row
+      if (currentStatus !== nextStatus) {
+        const recorderId = req.user!.id;
+        const notes = statusNotes ? String(statusNotes).trim() : null;
+
+        await sequelize.query<InsertedStatusEventRow>(
+          `
+            INSERT INTO animal_status_events
+              (id, animal_id, from_status, to_status, notes, recorded_by, created_at)
+            VALUES
+              (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())
+            RETURNING id, animal_id, from_status, to_status, notes, recorded_by, created_at
+          `,
+          {
+            bind: [id, currentStatus, nextStatus, notes, recorderId],
+            type: QueryTypes.SELECT,
+          }
+        );
+      }
+    }
+
+
+
+    const updates: any = {};
+    if (speciesId !== undefined) updates.species_id = speciesId;
+    if (tagNumber !== undefined)
+      updates.tag_number =
+        tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
+    if (sex !== undefined) updates.sex = sex;
+    if (dateOfBirth !== undefined) updates.date_of_birth = dateOfBirth;
+    if (status !== undefined) updates.status = status;
+
+    // 🔥 Build activity audit events (Sprint 3)
+    const activityEvents: any[] = [];
+
+    const pushIfChanged = (
+      field: string,
+      fromVal: any,
+      toVal: any,
+      notes?: string | null
+    ) => {
+      const fromStr = fromVal === undefined || fromVal === null ? null : String(fromVal);
+      const toStr = toVal === undefined || toVal === null ? null : String(toVal);
+
+      if (fromStr !== toStr) {
+        activityEvents.push({
+          ranch_id: ranchId,
+          animal_id: animal.get("id") as string,
+          event_type: "animal_update",
+          field,
+          from_value: fromStr,
+          to_value: toStr,
+          notes: notes ?? null,
+          recorded_by: recorderId,
+          created_at: new Date(),
+        });
+      }
+    };
+
+    // Compare CURRENT vs NEXT values
+    if (speciesId !== undefined)
+      pushIfChanged("species_id", animal.get("species_id"), updates.species_id);
+
+    if (tagNumber !== undefined)
+      pushIfChanged("tag_number", animal.get("tag_number"), updates.tag_number);
+
+    if (sex !== undefined)
+      pushIfChanged("sex", animal.get("sex"), updates.sex);
+
+    if (dateOfBirth !== undefined)
+      pushIfChanged("date_of_birth", animal.get("date_of_birth"), updates.date_of_birth);
+
+    if (status !== undefined)
+      pushIfChanged("status", animal.get("status"), updates.status, statusNotes ?? null);
+
+
+    await animal.update(updates);
+
+    if (activityEvents.length > 0) {
+      await AnimalActivityEvent.bulkCreate(activityEvents);
+    }
+
+    return res.status(StatusCodes.OK).json({
+      message: "Animal updated",
+      animal: {
+        id: animal.get("id") as string,
+        publicId: animal.get("public_id"),
+        tagNumber: animal.get("tag_number"),
+        sex: animal.get("sex"),
+        dateOfBirth: animal.get("date_of_birth"),
+        status: animal.get("status"),
+        speciesId: animal.get("species_id"),
+        updatedAt: animal.get("updated_at"),
+      },
+    });
+  } catch (err: any) {
+    console.error("UPDATE_ANIMAL_ERROR:", err);
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      message: "Failed to update animal",
+      error: err?.message ?? "Unknown error",
+      details: err?.errors ?? null,
+    });
   }
 }
