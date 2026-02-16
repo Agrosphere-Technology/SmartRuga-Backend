@@ -269,7 +269,6 @@ export const swaggerSchemas = {
     required: ["page", "limit", "total", "totalPages"],
   },
 
-
   ListHealthEventsResponse: {
     type: "object",
     properties: {
@@ -447,6 +446,88 @@ export const swaggerSchemas = {
       },
     },
     required: ["message", "animal"],
+  },
+
+  // Ranch Activity
+
+  ActivityActor: {
+    type: "object",
+    properties: {
+      id: { type: "string", format: "uuid" },
+      email: { type: "string", format: "email" },
+      firstName: { type: ["string", "null"] },
+      lastName: { type: ["string", "null"] },
+    },
+    required: ["id", "email"],
+  },
+
+  ActivityAnimalRef: {
+    type: "object",
+    properties: {
+      id: { type: "string", format: "uuid" },
+      publicId: { type: ["string", "null"], format: "uuid" },
+      tagNumber: { type: ["string", "null"] },
+    },
+    required: ["id"],
+  },
+
+  ActivityEvent: {
+    type: "object",
+    properties: {
+      id: { type: "string", format: "uuid" },
+      eventType: { type: "string", example: "animal_update" },
+      field: { type: ["string", "null"], example: "status" },
+      fromValue: { type: ["string", "null"], example: "active" },
+      toValue: { type: ["string", "null"], example: "sold" },
+      notes: { type: ["string", "null"], example: "Sold at market" },
+      actor: { $ref: "#/components/schemas/ActivityActor" },
+      animal: { anyOf: [{ $ref: "#/components/schemas/ActivityAnimalRef" }, { type: "null" }] },
+      createdAt: { type: "string", format: "date-time" },
+    },
+    required: ["id", "eventType", "actor", "createdAt"],
+  },
+
+  ActivityFeedResponse: {
+    type: "object",
+    properties: {
+      pagination: { $ref: "#/components/schemas/PaginationMeta" },
+      events: {
+        type: "array",
+        items: { $ref: "#/components/schemas/ActivityEvent" },
+      },
+    },
+    required: ["pagination", "events"],
+  },
+
+  AnimalActivityFeedResponse: {
+    type: "object",
+    properties: {
+      animal: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          publicId: { type: "string", format: "uuid" },
+          tagNumber: { type: ["string", "null"] },
+        },
+        required: ["id", "publicId"],
+      },
+      pagination: { $ref: "#/components/schemas/PaginationMeta" },
+      events: {
+        type: "array",
+        items: {
+          allOf: [
+            { $ref: "#/components/schemas/ActivityEvent" },
+            {
+              type: "object",
+              properties: {
+                animal: { type: "null" } // animal is implied by route
+              }
+            }
+          ]
+        },
+      },
+    },
+    required: ["animal", "pagination", "events"],
   },
 
 };
