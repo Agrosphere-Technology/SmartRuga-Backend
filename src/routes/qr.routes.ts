@@ -8,36 +8,33 @@
  *   get:
  *     tags: [QR]
  *     summary: Public QR scan endpoint (no auth)
- *     description: Public endpoint used by QR scanners. Returns JSON and may return HTML when opened in a browser.
+ *     description: Used by QR scanners. Returns JSON; may return HTML in a browser.
  *     parameters:
  *       - in: path
  *         name: publicId
  *         required: true
- *         schema:
- *           type: string
- *           format: uuid
+ *         schema: { type: string, format: uuid }
  *     responses:
  *       200:
  *         description: Public animal view
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/AnimalPublic'
+ *               $ref: "#/components/schemas/QrScanPublicResponse"
  *           text/html:
- *             schema:
- *               type: string
+ *             schema: { type: string }
  *       404:
  *         description: Animal not found
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *               $ref: "#/components/schemas/ErrorResponse"
  *       500:
  *         description: Server error
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *               $ref: "#/components/schemas/ErrorResponse"
  */
 
 

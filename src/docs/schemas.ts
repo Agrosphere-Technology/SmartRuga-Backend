@@ -235,15 +235,40 @@ export const swaggerSchemas = {
     type: "object",
     properties: {
       id: { type: "string", format: "uuid" },
-      status: {
-        type: "string",
-        enum: ["healthy", "sick", "recovering", "quarantined"],
-      },
+      status: { $ref: "#/components/schemas/HealthStatus" },
       notes: { type: ["string", "null"] },
+      recordedBy: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          email: { type: "string", format: "email" },
+          firstName: { type: ["string", "null"] },
+          lastName: { type: ["string", "null"] },
+        },
+        required: ["id", "email"],
+      },
       createdAt: { type: "string", format: "date-time" },
     },
-    required: ["id", "status", "createdAt"],
+    required: ["id", "status", "recordedBy", "createdAt"],
   },
+
+  HealthStatus: {
+    type: "string",
+    enum: ["healthy", "sick", "recovering", "quarantined"],
+  },
+
+
+  PaginationMeta: {
+    type: "object",
+    properties: {
+      page: { type: "integer", example: 1 },
+      limit: { type: "integer", example: 20 },
+      total: { type: "integer", example: 5 },
+      totalPages: { type: "integer", example: 1 },
+    },
+    required: ["page", "limit", "total", "totalPages"],
+  },
+
 
   ListHealthEventsResponse: {
     type: "object",
@@ -256,4 +281,138 @@ export const swaggerSchemas = {
     required: ["healthEvents"],
   },
 
+  AnimalHealthHistoryResponse: {
+    type: "object",
+    properties: {
+      animal: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          publicId: { type: "string", format: "uuid" },
+          tagNumber: { type: ["string", "null"] },
+        },
+        required: ["id", "publicId"],
+      },
+      pagination: { $ref: "#/components/schemas/PaginationMeta" },
+      events: {
+        type: "array",
+        items: { $ref: "#/components/schemas/HealthHistoryEvent" },
+      },
+    },
+    required: ["animal", "pagination", "events"],
+  },
+
+  AnimalLatestHealthResponse: {
+    type: "object",
+    properties: {
+      animal: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          publicId: { type: "string", format: "uuid" },
+          tagNumber: { type: ["string", "null"] },
+        },
+        required: ["id", "publicId"],
+      },
+      latest: {
+        type: ["object", "null"],
+        properties: {
+          id: { type: "string", format: "uuid" },
+          status: { $ref: "#/components/schemas/HealthStatus" },
+          notes: { type: ["string", "null"] },
+          createdAt: { type: "string", format: "date-time" },
+        },
+      },
+      healthStatus: {
+        $ref: "#/components/schemas/HealthStatus",
+      },
+    },
+    required: ["animal", "healthStatus"],
+  },
+
+  AddAnimalHealthRequest: {
+    type: "object",
+    required: ["status"],
+    properties: {
+      status: { $ref: "#/components/schemas/HealthStatus" },
+      notes: { type: ["string", "null"], maxLength: 500 },
+    },
+  },
+
+  AnimalHealthBasicListResponse: {
+    type: "object",
+    properties: {
+      healthEvents: {
+        type: "array",
+        items: { $ref: "#/components/schemas/AnimalHealthEvent" },
+      },
+    },
+    required: ["healthEvents"],
+  },
+
+  AddAnimalHealthResponse: {
+    type: "object",
+    properties: {
+      message: { type: "string" },
+      animal: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          publicId: { type: "string", format: "uuid" },
+          tagNumber: { type: ["string", "null"] },
+        },
+        required: ["id", "publicId"],
+      },
+      healthEvent: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          status: { $ref: "#/components/schemas/HealthStatus" },
+          notes: { type: ["string", "null"] },
+          recordedBy: { type: "string", format: "uuid" },
+          createdAt: { type: "string", format: "date-time" },
+        },
+        required: ["id", "status", "recordedBy", "createdAt"],
+      },
+      healthStatus: { $ref: "#/components/schemas/HealthStatus" },
+    },
+    required: ["message", "animal", "healthEvent", "healthStatus"],
+  },
+
+  HealthHistoryEvent: {
+    type: "object",
+    properties: {
+      id: { type: "string", format: "uuid" },
+      status: { $ref: "#/components/schemas/HealthStatus" },
+      notes: { type: ["string", "null"] },
+      recordedBy: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          email: { type: "string", format: "email" },
+          firstName: { type: ["string", "null"] },
+          lastName: { type: ["string", "null"] },
+        },
+        required: ["id", "email"],
+      },
+      createdAt: { type: "string", format: "date-time" },
+    },
+    required: ["id", "status", "recordedBy", "createdAt"],
+  },
+
+  QrScanPublicResponse: {
+    type: "object",
+    properties: {
+      publicId: { type: "string", format: "uuid" },
+      tagNumber: { type: ["string", "null"] },
+      sex: { type: "string", enum: ["male", "female", "unknown"] },
+      status: { type: "string", enum: ["active", "sold", "deceased"] },
+      healthStatus: { $ref: "#/components/schemas/HealthStatus" }, // from Sprint 2
+      species: { $ref: "#/components/schemas/Species" },
+    },
+    required: ["publicId", "sex", "status", "healthStatus", "species"],
+  },
+
 };
+
+

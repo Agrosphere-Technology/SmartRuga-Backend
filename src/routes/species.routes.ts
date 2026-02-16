@@ -9,12 +9,12 @@ const router = Router();
  * /api/v1/species:
  *   get:
  *     tags: [Livestock]
- *     summary: List supported species (for animal creation forms)
+ *     summary: List all species (for dropdowns)
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Species list
+ *         description: OK
  *         content:
  *           application/json:
  *             schema:
@@ -23,12 +23,11 @@ const router = Router();
  *                 species:
  *                   type: array
  *                   items:
- *                     $ref: '#/components/schemas/Species'
+ *                     $ref: "#/components/schemas/Species"
  *       401:
  *         description: Unauthorized
- *       500:
- *         description: Server error
  */
+
 router.get("/species", requireAuth(), listSpecies);
 
 export default router;

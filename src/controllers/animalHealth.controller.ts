@@ -34,6 +34,46 @@ type HealthHistoryRow = {
     created_at: Date;
 };
 
+const historyQuerySchema = z.object({
+    page: z
+        .string()
+        .optional()
+        .transform((v) => (v ? Number(v) : 1))
+        .refine((n) => Number.isFinite(n) && n >= 1, "page must be >= 1"),
+    limit: z
+        .string()
+        .optional()
+        .transform((v) => (v ? Number(v) : 20))
+        .refine((n) => Number.isFinite(n) && n >= 1 && n <= 100, "limit must be 1..100"),
+    status: z.enum(["healthy", "sick", "recovering", "quarantined"]).optional(),
+    from: z.string().optional(), // YYYY-MM-DD
+    to: z.string().optional(),   // YYYY-MM-DD
+});
+
+function canViewHealth(role: string) {
+    // I might decide to loosen this later if we decide / want all active members to view
+    return (
+        role === RANCH_ROLES.OWNER ||
+        role === RANCH_ROLES.MANAGER ||
+        role === RANCH_ROLES.VET
+    );
+}
+
+function parseDateOnlyToUTCStart(dateStr: string) {
+    // "2026-02-14" -> 2026-02-14T00:00:00.000Z
+    const d = new Date(`${dateStr}T00:00:00.000Z`);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function parseDateOnlyToUTCEndExclusive(dateStr: string) {
+    // inclusive end date -> exclusive next day start
+    const start = parseDateOnlyToUTCStart(dateStr);
+    if (!start) return null;
+    const next = new Date(start);
+    next.setUTCDate(next.getUTCDate() + 1);
+    return next;
+}
+
 type CountRow = { count: string };
 
 const addHealthSchema = z.object({
@@ -41,13 +81,7 @@ const addHealthSchema = z.object({
     notes: z.string().max(500).optional().nullable(),
 });
 
-const historyQuerySchema = z.object({
-    page: z.coerce.number().int().min(1).optional().default(1),
-    limit: z.coerce.number().int().min(1).max(100).optional().default(20),
-    status: z.enum(["healthy", "sick", "recovering", "quarantined"]).optional(),
-    from: z.string().datetime().optional(),
-    to: z.string().datetime().optional(),
-});
+
 
 function canAddHealth(role: string) {
     return (
@@ -57,14 +91,6 @@ function canAddHealth(role: string) {
     );
 }
 
-function canViewHealth(role: string) {
-    // you can loosen this later if you want all active members to view
-    return (
-        role === RANCH_ROLES.OWNER ||
-        role === RANCH_ROLES.MANAGER ||
-        role === RANCH_ROLES.VET
-    );
-}
 
 // POST /api/v1/ranches/:slug/animals/:animalId/health
 export async function addAnimalHealthEvent(req: Request, res: Response) {
@@ -254,30 +280,33 @@ export async function getAnimalLatestHealth(req: Request, res: Response) {
 }
 
 // GET /api/v1/ranches/:slug/animals/:animalId/health/history?page=&limit=&status=&from=&to=
+
+// GET /api/v1/ranches/:slug/animals/:animalId/health/history
 export async function listAnimalHealthHistory(req: Request, res: Response) {
     try {
         const requesterRole = req.membership!.ranchRole;
         if (!canViewHealth(requesterRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can view health history",
-            });
+            return res
+                .status(StatusCodes.FORBIDDEN)
+                .json({ message: "Only owner/manager/vet can view health history" });
         }
 
         const ranchId = req.ranch!.id;
         const { animalId } = req.params;
 
-        const qp = historyQuerySchema.safeParse(req.query);
-        if (!qp.success) {
+        // validate query
+        const parsedQ = historyQuerySchema.safeParse(req.query);
+        if (!parsedQ.success) {
             return res.status(StatusCodes.BAD_REQUEST).json({
                 message: "Invalid query params",
-                issues: qp.error.issues,
+                issues: parsedQ.error.issues,
             });
         }
 
-        const { page, limit, status, from, to } = qp.data;
+        const { page, limit, status, from, to } = parsedQ.data;
         const offset = (page - 1) * limit;
 
-        // ensure animal belongs to ranch
+        // Ensure animal belongs to this ranch
         const animal = await Animal.findOne({
             where: { id: animalId, ranch_id: ranchId },
             attributes: ["id", "public_id", "tag_number"],
@@ -289,65 +318,78 @@ export async function listAnimalHealthHistory(req: Request, res: Response) {
                 .json({ message: "Animal not found" });
         }
 
-        // dynamic WHERE
-        const whereParts: string[] = ["e.animal_id = $1"];
+        // Build WHERE dynamically + bind array
+        const whereParts: string[] = [`e.animal_id = $1`];
         const bind: any[] = [animalId];
-        let i = 2;
 
         if (status) {
-            whereParts.push(`e.status = $${i}`);
             bind.push(status);
-            i++;
+            whereParts.push(`e.status = $${bind.length}`);
         }
+
         if (from) {
-            whereParts.push(`e.created_at >= $${i}`);
-            bind.push(new Date(from));
-            i++;
+            const fromDate = parseDateOnlyToUTCStart(from);
+            if (!fromDate) {
+                return res
+                    .status(StatusCodes.BAD_REQUEST)
+                    .json({ message: "from must be YYYY-MM-DD" });
+            }
+            bind.push(fromDate);
+            whereParts.push(`e.created_at >= $${bind.length}`);
         }
+
         if (to) {
-            whereParts.push(`e.created_at <= $${i}`);
-            bind.push(new Date(to));
-            i++;
+            const toDateExclusive = parseDateOnlyToUTCEndExclusive(to);
+            if (!toDateExclusive) {
+                return res
+                    .status(StatusCodes.BAD_REQUEST)
+                    .json({ message: "to must be YYYY-MM-DD" });
+            }
+            bind.push(toDateExclusive);
+            whereParts.push(`e.created_at < $${bind.length}`);
         }
 
         const whereSql = whereParts.join(" AND ");
 
         // total count
-        const countRows = await sequelize.query<CountRow>(
+        const countRows = await sequelize.query<{ total: number }>(
             `
-      SELECT COUNT(*)::text as count
-      FROM animal_health_events e
-      WHERE ${whereSql}
+        SELECT COUNT(*)::int AS total
+        FROM animal_health_events e
+        WHERE ${whereSql}
       `,
             { bind, type: QueryTypes.SELECT }
         );
 
-        const total = Number(countRows[0]?.count ?? "0");
+        const total = countRows[0]?.total ?? 0;
+        const totalPages = Math.max(1, Math.ceil(total / limit));
 
-        // data rows
-        const dataBind = [...bind, limit, offset];
+        // page data
+        bind.push(limit);
+        const limitPos = bind.length;
+        bind.push(offset);
+        const offsetPos = bind.length;
+
         const rows = await sequelize.query<HealthHistoryRow>(
             `
-      SELECT
-        e.id,
-        e.animal_id,
-        e.status,
-        e.notes,
-        e.recorded_by,
-        u.email AS recorded_by_email,
-        u.first_name AS recorded_by_first_name,
-        u.last_name AS recorded_by_last_name,
-        e.created_at
-      FROM animal_health_events e
-      JOIN users u ON u.id = e.recorded_by
-      WHERE ${whereSql}
-      ORDER BY e.created_at DESC
-      LIMIT $${i} OFFSET $${i + 1}
+        SELECT
+          e.id,
+          e.animal_id,
+          e.status,
+          e.notes,
+          e.recorded_by,
+          u.email AS recorded_by_email,
+          u.first_name AS recorded_by_first_name,
+          u.last_name AS recorded_by_last_name,
+          e.created_at
+        FROM animal_health_events e
+        JOIN users u ON u.id = e.recorded_by
+        WHERE ${whereSql}
+        ORDER BY e.created_at DESC
+        LIMIT $${limitPos}
+        OFFSET $${offsetPos}
       `,
-            {
-                bind: dataBind,
-                type: QueryTypes.SELECT,
-            }
+            { bind, type: QueryTypes.SELECT }
         );
 
         return res.status(StatusCodes.OK).json({
@@ -356,11 +398,16 @@ export async function listAnimalHealthHistory(req: Request, res: Response) {
                 publicId: animal.get("public_id"),
                 tagNumber: animal.get("tag_number"),
             },
+            filters: {
+                status: status ?? null,
+                from: from ?? null,
+                to: to ?? null,
+            },
             pagination: {
                 page,
                 limit,
                 total,
-                totalPages: Math.ceil(total / limit),
+                totalPages,
             },
             events: rows.map((r) => ({
                 id: r.id,

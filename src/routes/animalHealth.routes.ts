@@ -21,17 +21,14 @@
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [status]
- *             properties:
- *               status:
- *                 type: string
- *                 enum: [healthy, sick, recovering, quarantined]
- *               notes:
- *                 type: string
- *                 nullable: true
+ *             $ref: "#/components/schemas/AddAnimalHealthRequest"
  *     responses:
- *       201: { description: Created }
+ *       201:
+ *         description: Created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/AddAnimalHealthResponse"
  *       400: { description: Invalid payload }
  *       401: { description: Unauthorized }
  *       403: { description: Forbidden }
@@ -52,11 +49,17 @@
  *         required: true
  *         schema: { type: string, format: uuid }
  *     responses:
- *       200: { description: OK }
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/AnimalHealthBasicListResponse"
  *       401: { description: Unauthorized }
  *       403: { description: Forbidden }
  *       404: { description: Animal not found }
  */
+
 
 /**
  * @openapi
@@ -64,6 +67,7 @@
  *   get:
  *     tags: [Livestock]
  *     summary: Get latest health status for an animal
+ *     description: Returns the most recent health event and computed healthStatus.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -76,7 +80,12 @@
  *         required: true
  *         schema: { type: string, format: uuid }
  *     responses:
- *       200: { description: OK }
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/AnimalLatestHealthResponse"
  *       401: { description: Unauthorized }
  *       403: { description: Forbidden }
  *       404: { description: Animal not found }
@@ -108,8 +117,7 @@
  *       - in: query
  *         name: status
  *         schema:
- *           type: string
- *           enum: [healthy, sick, recovering, quarantined]
+ *           $ref: "#/components/schemas/HealthStatus"
  *       - in: query
  *         name: from
  *         description: ISO datetime (inclusive)
@@ -119,13 +127,19 @@
  *         description: ISO datetime (inclusive)
  *         schema: { type: string, format: date-time }
  *     responses:
- *       200: { description: OK }
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/AnimalHealthHistoryResponse"
  *       400: { description: Invalid query params }
  *       401: { description: Unauthorized }
  *       403: { description: Forbidden }
  *       404: { description: Animal not found }
  */
 
+// Imports
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { requireRanchAccess } from "../middlewares/ranchAccess";
