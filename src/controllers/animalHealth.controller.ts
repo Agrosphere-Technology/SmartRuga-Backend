@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { QueryTypes } from "sequelize";
 import z from "zod";
+import { createRanchAlert } from "../services/ranchAlert.service";
 
 import { Animal, sequelize } from "../models";
 import { RANCH_ROLES } from "../constants/roles";
@@ -91,6 +92,11 @@ function canAddHealth(role: string) {
     );
 }
 
+function asString(val: unknown): string | undefined {
+    if (typeof val === "string") return val;
+    return undefined;
+}
+
 
 // POST /api/v1/ranches/:slug/animals/:animalId/health
 export async function addAnimalHealthEvent(req: Request, res: Response) {
@@ -104,7 +110,8 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
         }
 
         const ranchId = req.ranch!.id;
-        const { animalId } = req.params;
+        // const { animalId } = req.params;
+        const animalId = String(req.params.animalId);
 
         const requesterRole = req.membership!.ranchRole;
         if (!canAddHealth(requesterRole)) {
@@ -119,45 +126,69 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
         } as any);
 
         if (!animal) {
-            return res
-                .status(StatusCodes.NOT_FOUND)
-                .json({ message: "Animal not found" });
+            return res.status(StatusCodes.NOT_FOUND).json({ message: "Animal not found" });
         }
 
         const { status, notes } = parsed.data;
         const recorderId = req.user!.id;
 
-        // INSERT + RETURNING (use QueryTypes.SELECT in Sequelize typings)
-        const rows = await sequelize.query<InsertedHealthEventRow>(
-            `
-      INSERT INTO animal_health_events (id, animal_id, status, notes, recorded_by, created_at)
-      VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
-      RETURNING id, animal_id, status, notes, recorded_by, created_at
-      `,
-            {
-                bind: [animalId, status, notes ?? null, recorderId],
-                type: QueryTypes.SELECT,
+        const t = await sequelize.transaction();
+
+        try {
+            const rows = await sequelize.query<InsertedHealthEventRow>(
+                `
+          INSERT INTO animal_health_events (id, animal_id, status, notes, recorded_by, created_at)
+          VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
+          RETURNING id, animal_id, status, notes, recorded_by, created_at
+        `,
+                {
+                    bind: [animalId, status, notes ?? null, recorderId],
+                    type: QueryTypes.SELECT,
+                    transaction: t,
+                }
+            );
+
+            const event = rows[0];
+
+            // ✅ create alert only for sick/quarantined
+            if (event.status === "sick" || event.status === "quarantined") {
+                const alertType =
+                    event.status === "sick" ? "health_sick" : "health_quarantined";
+
+                const tag = (animal.get("tag_number") as string) ?? "UN-TAGGED";
+                const msg = `Animal ${tag} marked ${event.status}. ${event.notes ?? ""}`.trim();
+
+                await createRanchAlert({
+                    ranchId,
+                    animalId,
+                    alertType,
+                    message: msg,
+                    transaction: t,
+                });
             }
-        );
 
-        const event = rows[0];
+            await t.commit();
 
-        return res.status(StatusCodes.CREATED).json({
-            message: "Health event recorded",
-            animal: {
-                id: animal.get("id"),
-                publicId: animal.get("public_id"),
-                tagNumber: animal.get("tag_number"),
-            },
-            healthEvent: {
-                id: event.id,
-                status: event.status,
-                notes: event.notes,
-                recordedBy: event.recorded_by,
-                createdAt: event.created_at,
-            },
-            healthStatus: event.status, // latest health
-        });
+            return res.status(StatusCodes.CREATED).json({
+                message: "Health event recorded",
+                animal: {
+                    id: animal.get("id"),
+                    publicId: animal.get("public_id"),
+                    tagNumber: animal.get("tag_number"),
+                },
+                healthEvent: {
+                    id: event.id,
+                    status: event.status,
+                    notes: event.notes,
+                    recordedBy: event.recorded_by,
+                    createdAt: event.created_at,
+                },
+                healthStatus: event.status,
+            });
+        } catch (e) {
+            await t.rollback();
+            throw e;
+        }
     } catch (err: any) {
         console.error("ADD_ANIMAL_HEALTH_ERROR:", err);
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
@@ -167,6 +198,7 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
         });
     }
 }
+
 
 // GET /api/v1/ranches/:slug/animals/:animalId/health
 // (simple list: status+notes+createdAt)

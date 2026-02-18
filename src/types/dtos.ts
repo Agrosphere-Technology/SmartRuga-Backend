@@ -23,3 +23,4 @@ export interface RanchMemberDTO {
   role: RanchRole;
   status: MembershipStatus;
 }
+

@@ -6,6 +6,7 @@ import { buildAnimalQrUrl } from "../utils/qr";
 import { RANCH_ROLES } from "../constants/roles";
 import { listAnimalsQuerySchema, updateAnimalSchema } from "../validators/animal.validator";
 import { AnimalActivityEvent } from "../models";
+import { createRanchAlert } from "../services/ranchAlert.service";
 
 type LatestHealthRow = {
   animal_id: string;
@@ -343,9 +344,12 @@ export async function getAnimalById(req: Request, res: Response) {
 // Update Animal
 
 export async function updateAnimal(req: Request, res: Response) {
+  const t = await sequelize.transaction();
+
   try {
     const parsed = updateAnimalSchema.safeParse(req.body);
     if (!parsed.success) {
+      await t.rollback();
       return res.status(StatusCodes.BAD_REQUEST).json({
         message: "Invalid payload",
         issues: parsed.error.issues,
@@ -353,8 +357,9 @@ export async function updateAnimal(req: Request, res: Response) {
     }
 
     const ranchId = req.ranch!.id;
-    const { id } = req.params;
+    const { id } = req.params; // ✅ route param is :id
     const recorderId = req.user!.id;
+    const animalId = String(req.params.id);
 
     const requesterRole = req.membership!.ranchRole;
     const canUpdate =
@@ -363,6 +368,7 @@ export async function updateAnimal(req: Request, res: Response) {
       requesterRole === RANCH_ROLES.VET;
 
     if (!canUpdate) {
+      await t.rollback();
       return res
         .status(StatusCodes.FORBIDDEN)
         .json({ message: "Not allowed to update animals" });
@@ -370,39 +376,45 @@ export async function updateAnimal(req: Request, res: Response) {
 
     const animal = await Animal.findOne({
       where: { id, ranch_id: ranchId },
+      transaction: t,
     } as any);
 
     if (!animal) {
-      return res
-        .status(StatusCodes.NOT_FOUND)
-        .json({ message: "Animal not found" });
+      await t.rollback();
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Animal not found" });
     }
 
-    // ✅ include optional statusNotes in your schema (see note below)
     const { speciesId, tagNumber, sex, dateOfBirth, status, statusNotes } =
-      parsed.data as any;
+      parsed.data as {
+        speciesId?: string;
+        tagNumber?: string | null;
+        sex?: "male" | "female" | "unknown";
+        dateOfBirth?: string | null;
+        status?: StatusEnum;
+        statusNotes?: string | null;
+      };
 
     // ✅ If speciesId provided, must exist
     if (speciesId) {
-      const species = await Species.findByPk(speciesId);
+      const species = await Species.findByPk(speciesId, { transaction: t });
       if (!species) {
-        return res
-          .status(StatusCodes.BAD_REQUEST)
-          .json({ message: "Invalid species" });
+        await t.rollback();
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid species" });
       }
     }
 
     // ✅ If tagNumber provided, prevent duplicates in same ranch (excluding this animal)
     if (tagNumber !== undefined) {
-      const normalized =
-        tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
+      const normalized = tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
 
       if (normalized) {
         const dup = await Animal.findOne({
           where: { ranch_id: ranchId, tag_number: normalized },
+          transaction: t,
         } as any);
 
         if (dup && (dup.get("id") as string) !== (animal.get("id") as string)) {
+          await t.rollback();
           return res.status(StatusCodes.CONFLICT).json({
             message: "Tag number already exists in this ranch",
           });
@@ -410,65 +422,16 @@ export async function updateAnimal(req: Request, res: Response) {
       }
     }
 
-    // ✅ Status transition + event logging
-    const currentStatus = animal.get("status") as StatusEnum;
-
-    if (status !== undefined && status !== null) {
-      const nextStatus = status as StatusEnum;
-
-      // validate transition
-      if (!canTransition(currentStatus, nextStatus)) {
-        return res.status(StatusCodes.BAD_REQUEST).json({
-          message: `Invalid status transition: ${currentStatus} -> ${nextStatus}`,
-        });
-      }
-
-      // require note for sold/deceased transitions (only when changing)
-      const isChanging = currentStatus !== nextStatus;
-      const requiresNote = nextStatus === "sold" || nextStatus === "deceased";
-
-      if (isChanging && requiresNote) {
-        const note = (statusNotes ?? "").toString().trim();
-        if (!note) {
-          return res.status(StatusCodes.BAD_REQUEST).json({
-            message: "statusNotes is required when status is sold or deceased",
-          });
-        }
-      }
-
-      // if changing, insert status event row
-      if (currentStatus !== nextStatus) {
-        const recorderId = req.user!.id;
-        const notes = statusNotes ? String(statusNotes).trim() : null;
-
-        await sequelize.query<InsertedStatusEventRow>(
-          `
-            INSERT INTO animal_status_events
-              (id, animal_id, from_status, to_status, notes, recorded_by, created_at)
-            VALUES
-              (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())
-            RETURNING id, animal_id, from_status, to_status, notes, recorded_by, created_at
-          `,
-          {
-            bind: [id, currentStatus, nextStatus, notes, recorderId],
-            type: QueryTypes.SELECT,
-          }
-        );
-      }
-    }
-
-
-
+    // ✅ Build update payload
     const updates: any = {};
     if (speciesId !== undefined) updates.species_id = speciesId;
     if (tagNumber !== undefined)
-      updates.tag_number =
-        tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
+      updates.tag_number = tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
     if (sex !== undefined) updates.sex = sex;
     if (dateOfBirth !== undefined) updates.date_of_birth = dateOfBirth;
     if (status !== undefined) updates.status = status;
 
-    // 🔥 Build activity audit events (Sprint 3)
+    // 🔥 Activity audit events
     const activityEvents: any[] = [];
 
     const pushIfChanged = (
@@ -495,7 +458,6 @@ export async function updateAnimal(req: Request, res: Response) {
       }
     };
 
-    // Compare CURRENT vs NEXT values
     if (speciesId !== undefined)
       pushIfChanged("species_id", animal.get("species_id"), updates.species_id);
 
@@ -508,15 +470,80 @@ export async function updateAnimal(req: Request, res: Response) {
     if (dateOfBirth !== undefined)
       pushIfChanged("date_of_birth", animal.get("date_of_birth"), updates.date_of_birth);
 
-    if (status !== undefined)
-      pushIfChanged("status", animal.get("status"), updates.status, statusNotes ?? null);
+    // ✅ Status transition + status event + alert
+    const currentStatus = animal.get("status") as StatusEnum;
 
+    if (status !== undefined && status !== null) {
+      const nextStatus = status as StatusEnum;
 
-    await animal.update(updates);
+      if (!canTransition(currentStatus, nextStatus)) {
+        await t.rollback();
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          message: `Invalid status transition: ${currentStatus} -> ${nextStatus}`,
+        });
+      }
 
-    if (activityEvents.length > 0) {
-      await AnimalActivityEvent.bulkCreate(activityEvents);
+      const isChanging = currentStatus !== nextStatus;
+      const requiresNote = nextStatus === "sold" || nextStatus === "deceased";
+
+      if (isChanging && requiresNote) {
+        const note = (statusNotes ?? "").toString().trim();
+        if (!note) {
+          await t.rollback();
+          return res.status(StatusCodes.BAD_REQUEST).json({
+            message: "statusNotes is required when status is sold or deceased",
+          });
+        }
+      }
+
+      if (isChanging) {
+        const notes = statusNotes ? String(statusNotes).trim() : null;
+
+        // insert status event
+        await sequelize.query<InsertedStatusEventRow>(
+          `
+          INSERT INTO animal_status_events
+            (id, animal_id, from_status, to_status, notes, recorded_by, created_at)
+          VALUES
+            (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())
+          RETURNING id, animal_id, from_status, to_status, notes, recorded_by, created_at
+          `,
+          {
+            bind: [id, currentStatus, nextStatus, notes, recorderId],
+            type: QueryTypes.SELECT,
+            transaction: t,
+          }
+        );
+
+        // add activity record for status change too
+        pushIfChanged("status", currentStatus, nextStatus, notes);
+
+        // create alert for sold/deceased
+        if (nextStatus === "sold" || nextStatus === "deceased") {
+          const alertType = nextStatus === "sold" ? "status_sold" : "status_deceased";
+          const tag = (animal.get("tag_number") as string) ?? "UN-TAGGED";
+          const msg = `Animal ${tag} status changed: ${currentStatus} → ${nextStatus}. ${notes ?? ""}`.trim();
+
+          await createRanchAlert({
+            ranchId,
+            animalId,
+            alertType,
+            message: msg,
+            transaction: t,
+          });
+        }
+      }
     }
+
+    // ✅ Save animal updates
+    await animal.update(updates, { transaction: t });
+
+    // ✅ Save audit events
+    if (activityEvents.length > 0) {
+      await AnimalActivityEvent.bulkCreate(activityEvents, { transaction: t });
+    }
+
+    await t.commit();
 
     return res.status(StatusCodes.OK).json({
       message: "Animal updated",
@@ -532,6 +559,7 @@ export async function updateAnimal(req: Request, res: Response) {
       },
     });
   } catch (err: any) {
+    await t.rollback();
     console.error("UPDATE_ANIMAL_ERROR:", err);
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
       message: "Failed to update animal",
