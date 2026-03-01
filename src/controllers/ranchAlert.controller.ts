@@ -3,8 +3,8 @@ import { StatusCodes } from "http-status-codes";
 import { QueryTypes } from "sequelize";
 import { sequelize } from "../models";
 import { bulkReadSchema, listAlertsQuerySchema } from "../validators/alert.validator";
-import { canManageAlerts, canViewAlerts } from "../helpers/alert.helpers";
-import { AlertRow, CountRow } from "../types/alert.dto";
+import { canManageAlerts, canViewAlerts, parseIntSafe } from "../helpers/alert.helpers";
+import { AlertRow } from "../types/alert.dto";
 
 
 export async function listRanchAlerts(req: Request, res: Response) {
@@ -18,43 +18,79 @@ export async function listRanchAlerts(req: Request, res: Response) {
 
         const ranchId = req.ranch!.id;
 
-        const parsed = listAlertsQuerySchema.safeParse(req.query);
-        if (!parsed.success) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Invalid query params",
-                issues: parsed.error.issues,
-            });
-        }
-
-        const { page, limit, type, unread } = parsed.data;
+        const page = parseIntSafe(req.query.page, 1);
+        const limit = Math.min(parseIntSafe(req.query.limit, 20), 100);
         const offset = (page - 1) * limit;
 
-        const whereParts: string[] = [`a.ranch_id = $1`];
+        // filters
+        const unread =
+            typeof req.query.unread === "string"
+                ? req.query.unread === "true"
+                    ? true
+                    : req.query.unread === "false"
+                        ? false
+                        : undefined
+                : undefined;
+
+        const alertType =
+            typeof req.query.alertType === "string" ? req.query.alertType : undefined;
+
+        const animalId =
+            typeof req.query.animalId === "string" ? req.query.animalId : undefined;
+
+        const from = typeof req.query.from === "string" ? req.query.from : undefined;
+        const to = typeof req.query.to === "string" ? req.query.to : undefined;
+
+        // unreadCount (badge): ranch-wide, not affected by filters
+        const unreadCountRows = await sequelize.query<{ unread_count: number }>(
+            `
+      SELECT COUNT(*)::int AS unread_count
+      FROM ranch_alerts
+      WHERE ranch_id = $1 AND is_read = false
+      `,
+            { bind: [ranchId], type: QueryTypes.SELECT }
+        );
+        const unreadCount = unreadCountRows[0]?.unread_count ?? 0;
+
+        // build WHERE for list + total
+        const whereParts: string[] = [`ra.ranch_id = $1`];
         const bind: any[] = [ranchId];
         let idx = 2;
 
-        // type filter (array) -> IN (...)
-        if (type && type.length) {
-            const placeholders = type.map(() => `$${idx++}`).join(", ");
-            whereParts.push(`a.alert_type IN (${placeholders})`);
-            bind.push(...type);
+        if (unread === true) {
+            whereParts.push(`ra.is_read = false`);
+        } else if (unread === false) {
+            whereParts.push(`ra.is_read = true`);
         }
 
-        // unread filter
-        if (unread === true) {
-            whereParts.push(`a.is_read = false`);
-        } else if (unread === false) {
-            whereParts.push(`a.is_read = true`);
+        if (alertType) {
+            whereParts.push(`ra.alert_type = $${idx++}`);
+            bind.push(alertType);
+        }
+
+        if (animalId) {
+            whereParts.push(`ra.animal_id = $${idx++}::uuid`);
+            bind.push(animalId);
+        }
+
+        if (from) {
+            whereParts.push(`ra.created_at >= $${idx++}::timestamptz`);
+            bind.push(from);
+        }
+
+        if (to) {
+            whereParts.push(`ra.created_at <= $${idx++}::timestamptz`);
+            bind.push(to);
         }
 
         const whereSql = `WHERE ${whereParts.join(" AND ")}`;
 
-        // count
-        const countRows = await sequelize.query<CountRow>(
+        // total
+        const countRows = await sequelize.query<{ total: number }>(
             `
-        SELECT COUNT(*)::int AS total
-        FROM ranch_alerts a
-        ${whereSql}
+      SELECT COUNT(*)::int AS total
+      FROM ranch_alerts ra
+      ${whereSql}
       `,
             { bind, type: QueryTypes.SELECT }
         );
@@ -62,24 +98,33 @@ export async function listRanchAlerts(req: Request, res: Response) {
         const total = countRows[0]?.total ?? 0;
         const totalPages = Math.max(1, Math.ceil(total / limit));
 
-        // list
+        // rows
         const rows = await sequelize.query<AlertRow>(
             `
-        SELECT
-          a.id,
-          a.ranch_id,
-          a.animal_id,
-          a.alert_type,
-          a.message,
-          a.is_read,
-          a.created_at,
-          an.public_id AS animal_public_id,
-          an.tag_number AS animal_tag_number
-        FROM ranch_alerts a
-        LEFT JOIN animals an ON an.id = a.animal_id
-        ${whereSql}
-        ORDER BY a.created_at DESC
-        LIMIT $${idx++} OFFSET $${idx++}
+      SELECT
+        ra.id,
+        ra.ranch_id,
+        ra.animal_id,
+        ra.alert_type,
+        ra.message,
+        ra.is_read,
+        ra.read_at,
+        ra.read_by,
+        ra.created_at,
+
+        a.public_id AS animal_public_id,
+        a.tag_number AS animal_tag_number,
+
+        u.email AS read_by_email,
+        u.first_name AS read_by_first_name,
+        u.last_name AS read_by_last_name
+
+      FROM ranch_alerts ra
+      LEFT JOIN animals a ON a.id = ra.animal_id
+      LEFT JOIN users u ON u.id = ra.read_by
+      ${whereSql}
+      ORDER BY ra.created_at DESC
+      LIMIT $${idx++} OFFSET $${idx++}
       `,
             {
                 bind: [...bind, limit, offset],
@@ -89,11 +134,21 @@ export async function listRanchAlerts(req: Request, res: Response) {
 
         return res.status(StatusCodes.OK).json({
             pagination: { page, limit, total, totalPages },
+            unreadCount,
             alerts: rows.map((r) => ({
                 id: r.id,
-                type: r.alert_type,
+                alertType: r.alert_type,
                 message: r.message,
-                read: r.is_read,
+                isRead: r.is_read,
+                readAt: r.read_at,
+                readBy: r.read_by
+                    ? {
+                        id: r.read_by,
+                        email: r.read_by_email,
+                        firstName: r.read_by_first_name,
+                        lastName: r.read_by_last_name,
+                    }
+                    : null,
                 animal: r.animal_id
                     ? {
                         id: r.animal_id,

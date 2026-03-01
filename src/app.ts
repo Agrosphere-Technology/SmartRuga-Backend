@@ -21,23 +21,25 @@ import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./docs/swagger";
 
 import { logMiddleware } from "./utils/logger";
+import { configureCors } from "./config/corsConfig";
 
 const app = express();
 app.set("trust proxy", 1);
 
-const origins = (process.env.CORS_ORIGIN || "*")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+// CORS — MUST be early
 
-app.use(cors({ origin: origins, credentials: true }));
+app.use(configureCors());
+
 app.use(
   helmet({ hsts: process.env.NODE_ENV === "production" ? undefined : false }),
+
+  // Rate limiting
 );
 app.use(
   rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true }),
 );
 
+// Security & parsing
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 app.use(logMiddleware);

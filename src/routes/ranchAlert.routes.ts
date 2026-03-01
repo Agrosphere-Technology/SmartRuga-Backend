@@ -3,7 +3,7 @@
  * /api/v1/ranches/{slug}/alerts:
  *   get:
  *     tags: [Alerts]
- *     summary: List ranch alerts (pagination + filtering)
+ *     summary: List ranch alerts (paginated) + unread badge count
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -18,24 +18,28 @@
  *         name: limit
  *         schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
  *       - in: query
- *         name: type
- *         description: Comma-separated alert types (e.g. health_sick,status_sold)
- *         schema:
- *           type: string
- *       - in: query
  *         name: unread
- *         description: true=only unread, false=only read
- *         schema:
- *           type: boolean
+ *         description: Filter read/unread
+ *         schema: { type: boolean }
+ *       - in: query
+ *         name: alertType
+ *         schema: { type: string }
+ *         description: e.g health_sick, health_quarantined, status_sold, status_deceased
+ *       - in: query
+ *         name: animalId
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: from
+ *         description: ISO datetime (inclusive)
+ *         schema: { type: string, format: date-time }
+ *       - in: query
+ *         name: to
+ *         description: ISO datetime (inclusive)
+ *         schema: { type: string, format: date-time }
  *     responses:
- *       200:
- *         description: OK
- *       400:
- *         description: Invalid query params
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Forbidden
+ *       200: { description: OK }
+ *       401: { description: Unauthorized }
+ *       403: { description: Forbidden }
  */
 
 /**
