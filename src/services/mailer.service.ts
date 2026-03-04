@@ -7,15 +7,33 @@ type SendMailInput = {
 
 const MAIL_ENABLED = process.env.MAIL_ENABLED === "true";
 
+/**
+ * Generic mail sender.
+ * Safe scaffold – does nothing if MAIL_ENABLED=false.
+ */
 export async function sendMail(input: SendMailInput) {
-    if (!MAIL_ENABLED) {
-        if (process.env.NODE_ENV !== "production") {
-            console.log("[MAIL DISABLED]", { to: input.to, subject: input.subject });
+    try {
+        if (!MAIL_ENABLED) {
+            if (process.env.NODE_ENV !== "production") {
+                console.log("[MAIL DISABLED]");
+                console.log({
+                    to: input.to,
+                    subject: input.subject,
+                });
+            }
+            return;
         }
-        return;
-    }
 
-    // Plug-in point (SendGrid/Mailgun/SES etc.)
-    // Keep as a clean contract so controllers/services don't change later.
-    throw new Error("Mailer enabled but no provider configured");
+        /**
+         * Future integration point.
+         * Example providers:
+         * - SendGrid
+         * - AWS SES
+         * - Mailgun
+         */
+
+        throw new Error("Mailer enabled but no provider configured");
+    } catch (err) {
+        console.error("MAIL_SEND_ERROR:", err);
+    }
 }
