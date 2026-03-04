@@ -15,6 +15,7 @@ export class UserModel extends Model<
   declare last_name: string | null;
   declare email: string;
   declare password_hash: string;
+  declare phone: string | null;
   declare platform_role: "user" | "admin" | "super_admin";
   declare is_active: boolean;
   declare deleted_at: Date | null;
@@ -34,6 +35,7 @@ export function UserFactory(sequelize: Sequelize) {
       last_name: { type: DataTypes.STRING(100), allowNull: true },
       email: { type: DataTypes.STRING(255), allowNull: false, unique: true },
       password_hash: { type: DataTypes.STRING(255), allowNull: false },
+      phone: { type: DataTypes.STRING(30), allowNull: true },
       platform_role: {
         type: DataTypes.ENUM("user", "admin", "super_admin"),
         allowNull: false,

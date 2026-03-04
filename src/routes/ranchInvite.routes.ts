@@ -115,7 +115,7 @@ router.get(
 
 // Revoke an invite
 router.delete(
-  "/:slug/invites/:inviteId",
+  "/:slug/invites/:invitePublicId",
   requireAuth(),
   requireRanchAccess("slug"),
   revokeInvite
@@ -123,10 +123,9 @@ router.delete(
 
 // Resend an invite
 router.post(
-  "/:slug/invites/:inviteId/resend",
+  "/:slug/invites/:invitePublicId/resend",
   requireAuth(),
   requireRanchAccess("slug"),
   resendInvite
 );
-
 export default router;

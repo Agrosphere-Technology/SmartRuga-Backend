@@ -2,20 +2,34 @@ import { Request, Response } from "express";
 import crypto from "node:crypto";
 import { StatusCodes } from "http-status-codes";
 
-import { Invite, RanchMember, User } from "../models";
+import { Invite, Ranch, RanchMember, User } from "../models";
 import { sha256 } from "../utils/crypto";
-import {
-  createInviteSchema,
-  acceptInviteSchema,
-} from "../validators/invite.validator";
-import { MEMBERSHIP_STATUS, RANCH_ROLES, RanchRole } from "../constants/roles";
+import { MEMBERSHIP_STATUS, RANCH_ROLES } from "../constants/roles";
+import { acceptInviteSchema, createInviteSchema, invitePreviewSchema } from "../validators/invite.validator";
+
+// Frontend base URL for generating shareable invite links
+const FRONTEND_BASE_URL =
+  process.env.FRONTEND_BASE_URL || "http://localhost:3000";
 
 const INVITE_TTL_DAYS = Number(process.env.INVITE_TTL_DAYS || 7);
+
+// If you want to NEVER return raw token in production, set this true.
+// For internal tools, you might want to always return acceptUrl so admins can copy/share.
+const HIDE_TOKEN_IN_PROD = true;
+
+function isProd() {
+  return process.env.NODE_ENV === "production";
+}
 
 function makeInviteToken() {
   return crypto.randomBytes(32).toString("hex"); // 64 chars
 }
 
+function buildAcceptUrl(token: string) {
+  return `${FRONTEND_BASE_URL}/invites/accept?token=${encodeURIComponent(token)}`;
+}
+
+// Create Invite
 export async function createInvite(req: Request, res: Response) {
   try {
     const parsed = createInviteSchema.safeParse(req.body);
@@ -28,7 +42,6 @@ export async function createInvite(req: Request, res: Response) {
     // requireRanchAccess already set these
     const ranchId = req.ranch!.id;
     const creatorId = req.user!.id;
-
     const requesterRole = req.membership!.ranchRole;
 
     // Only owner/manager can invite
@@ -44,7 +57,14 @@ export async function createInvite(req: Request, res: Response) {
     const email = parsed.data.email.toLowerCase().trim();
     const role = parsed.data.ranchRole;
 
-    // ✅ Prevent inviting an existing ACTIVE member
+    // Prevent inviting someone as owner unless requester is owner
+    if (role === RANCH_ROLES.OWNER && requesterRole !== RANCH_ROLES.OWNER) {
+      return res
+        .status(StatusCodes.FORBIDDEN)
+        .json({ message: "Only owner can invite another owner" });
+    }
+
+    // Prevent inviting an existing ACTIVE member
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       const existingMembership = await RanchMember.findOne({
@@ -61,19 +81,12 @@ export async function createInvite(req: Request, res: Response) {
       }
     }
 
-    // optional: prevent inviting someone as owner unless requester is owner
-    if (role === RANCH_ROLES.OWNER && requesterRole !== RANCH_ROLES.OWNER) {
-      return res
-        .status(StatusCodes.FORBIDDEN)
-        .json({ message: "Only owner can invite another owner" });
-    }
-
-    // expire date
+    // Expire date
     const expiresAt = new Date(
       Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000
     );
 
-    // prevent duplicates: if an unused invite exists for same ranch+email, deny
+    // Prevent duplicates: if an unused invite exists for same ranch+email, deny
     const existingInvite = await Invite.findOne({
       where: { ranch_id: ranchId, email, used_at: null },
     } as any);
@@ -84,11 +97,11 @@ export async function createInvite(req: Request, res: Response) {
         .json({ message: "Invite already exists for this email" });
     }
 
-    // generate token + hash
+    // Generate token + hash (store only the hash)
     const token = makeInviteToken();
     const tokenHash = sha256(token);
 
-    // create invite
+    // Create invite
     const invite = await Invite.create({
       ranch_id: ranchId,
       email,
@@ -98,10 +111,11 @@ export async function createInvite(req: Request, res: Response) {
       created_by: creatorId,
       used_at: null,
       created_at: new Date(),
+      // public_id is generated in DB (default gen_random_uuid())
     } as any);
 
     // If user already exists, create or update membership as pending
-    const user = existingUser; // reuse lookup above
+    const user = existingUser;
     if (user) {
       const userId = user.get("id") as string;
 
@@ -121,16 +135,22 @@ export async function createInvite(req: Request, res: Response) {
       }
     }
 
-    // For now return token so you can test in Postman.
-    // Later we email this token link.
+    const acceptUrl = buildAcceptUrl(token);
+
+    // In production: return acceptUrl (copy/share) but optionally hide raw token
+    const includeToken = !(HIDE_TOKEN_IN_PROD && isProd());
+
     return res.status(StatusCodes.CREATED).json({
       invite: {
-        id: invite.get("id"),
+        publicId: invite.get("public_id"),
         email,
         role,
+        status: "pending",
         expiresAt: invite.get("expires_at"),
+        createdAt: invite.get("created_at"),
       },
-      token,
+      acceptUrl,
+      ...(includeToken ? { token } : {}),
     });
   } catch (err: any) {
     console.error("CREATE_INVITE_ERROR:", err);
@@ -142,11 +162,10 @@ export async function createInvite(req: Request, res: Response) {
   }
 }
 
+// List Invites
 export async function listInvites(req: Request, res: Response) {
   try {
     const requesterRole = req.membership!.ranchRole;
-
-    // ✅ type the allowed roles array as RanchRole[]
 
     if (
       requesterRole !== RANCH_ROLES.OWNER &&
@@ -166,7 +185,7 @@ export async function listInvites(req: Request, res: Response) {
 
     return res.status(StatusCodes.OK).json({
       invites: invites.map((i: any) => ({
-        id: i.get("id"),
+        publicId: i.get("public_id"),
         email: i.get("email"),
         role: i.get("role"),
         expiresAt: i.get("expires_at"),
@@ -184,6 +203,7 @@ export async function listInvites(req: Request, res: Response) {
   }
 }
 
+// Accept Invite
 export async function acceptInvite(req: Request, res: Response) {
   try {
     const parsed = acceptInviteSchema.safeParse(req.body);
@@ -201,30 +221,33 @@ export async function acceptInvite(req: Request, res: Response) {
     const invite = await Invite.findOne({
       where: { token_hash: tokenHash },
     } as any);
-    if (!invite)
+
+    if (!invite) {
       return res
         .status(StatusCodes.NOT_FOUND)
         .json({ message: "Invite not found" });
+    }
 
     if (invite.get("used_at")) {
       return res
-        .status(StatusCodes.BAD_REQUEST)
-        .json({ message: "Invite already used" });
+        .status(StatusCodes.CONFLICT)
+        .json({ message: "Invite already used/revoked" });
     }
 
     const expiresAt = invite.get("expires_at") as Date;
     if (expiresAt.getTime() < Date.now()) {
       return res
-        .status(StatusCodes.BAD_REQUEST)
+        .status(StatusCodes.GONE)
         .json({ message: "Invite expired" });
     }
 
     // Ensure invite email matches logged-in user email
     const user = await User.findByPk(userId);
-    if (!user)
+    if (!user) {
       return res
         .status(StatusCodes.NOT_FOUND)
         .json({ message: "User not found" });
+    }
 
     const inviteEmail = (invite.get("email") as string).toLowerCase();
     const userEmail = (user.get("email") as string).toLowerCase();
@@ -242,6 +265,7 @@ export async function acceptInvite(req: Request, res: Response) {
     const membership = await RanchMember.findOne({
       where: { ranch_id: ranchId, user_id: userId },
     });
+
     if (!membership) {
       await RanchMember.create({
         ranch_id: ranchId,
@@ -270,10 +294,12 @@ export async function acceptInvite(req: Request, res: Response) {
   }
 }
 
+// Revoke Invite
 export async function revokeInvite(req: Request, res: Response) {
   try {
     const requesterRole = req.membership!.ranchRole;
-    // Only owner/manager can invite
+
+    // Only owner/manager can revoke
     if (
       requesterRole !== RANCH_ROLES.OWNER &&
       requesterRole !== RANCH_ROLES.MANAGER
@@ -284,26 +310,50 @@ export async function revokeInvite(req: Request, res: Response) {
     }
 
     const ranchId = req.ranch!.id;
-    const { inviteId } = req.params;
+
+    // Be tolerant: accept either :invitePublicId or legacy :inviteId
+    const invitePublicId =
+      (req.params as any).invitePublicId ||
+      (req.params as any).inviteId ||
+      (req.params as any).id;
+
+    // Helpful guard to avoid "undefined" SQL errors
+    if (!invitePublicId || typeof invitePublicId !== "string") {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        message: "Missing invitePublicId in URL params",
+        params: req.params,
+      });
+    }
 
     const invite = await Invite.findOne({
-      where: { id: inviteId, ranch_id: ranchId },
+      where: { public_id: invitePublicId, ranch_id: ranchId },
     } as any);
-    if (!invite)
+
+    if (!invite) {
       return res
         .status(StatusCodes.NOT_FOUND)
         .json({ message: "Invite not found" });
+    }
 
-    // If already used/revoked
+    // already used/revoked
     if (invite.get("used_at")) {
       return res
-        .status(StatusCodes.BAD_REQUEST)
+        .status(StatusCodes.CONFLICT)
         .json({ message: "Invite already used/revoked" });
     }
 
+    // Soft revoke (mark used_at)
     await invite.update({ used_at: new Date() });
 
-    return res.status(StatusCodes.OK).json({ message: "Invite revoked" });
+    return res.status(StatusCodes.OK).json({
+      message: "Invite revoked",
+      invite: {
+        publicId: invite.get("public_id"),
+        email: invite.get("email"),
+        role: invite.get("role"),
+        usedAt: invite.get("used_at"),
+      },
+    });
   } catch (err: any) {
     console.error("REVOKE_INVITE_ERROR:", err);
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
@@ -314,11 +364,11 @@ export async function revokeInvite(req: Request, res: Response) {
   }
 }
 
-// Resend invite
+// Resend invite (regenerates token_hash + extends expiry; returns new acceptUrl)
 export async function resendInvite(req: Request, res: Response) {
   try {
     const requesterRole = req.membership!.ranchRole;
-    // Only owner/manager can re-invite
+
     if (
       requesterRole !== RANCH_ROLES.OWNER &&
       requesterRole !== RANCH_ROLES.MANAGER
@@ -329,19 +379,21 @@ export async function resendInvite(req: Request, res: Response) {
     }
 
     const ranchId = req.ranch!.id;
-    const { inviteId } = req.params;
+    const { invitePublicId } = req.params as { invitePublicId: string };
 
     const invite = await Invite.findOne({
-      where: { id: inviteId, ranch_id: ranchId },
+      where: { public_id: invitePublicId, ranch_id: ranchId },
     } as any);
-    if (!invite)
+
+    if (!invite) {
       return res
         .status(StatusCodes.NOT_FOUND)
         .json({ message: "Invite not found" });
+    }
 
     if (invite.get("used_at")) {
       return res
-        .status(StatusCodes.BAD_REQUEST)
+        .status(StatusCodes.CONFLICT)
         .json({ message: "Invite already used/revoked" });
     }
 
@@ -357,21 +409,83 @@ export async function resendInvite(req: Request, res: Response) {
       expires_at: expiresAt,
     });
 
-    // For now, return token for testing; later email it.
+    const acceptUrl = buildAcceptUrl(token);
+    const includeToken = !(HIDE_TOKEN_IN_PROD && isProd());
+
     return res.status(StatusCodes.OK).json({
       message: "Invite resent",
       invite: {
-        id: invite.get("id"),
+        publicId: invite.get("public_id"),
         email: invite.get("email"),
         role: invite.get("role"),
+        status: "pending",
         expiresAt: invite.get("expires_at"),
       },
-      token,
+      acceptUrl,
+      ...(includeToken ? { token } : {}),
     });
   } catch (err: any) {
     console.error("RESEND_INVITE_ERROR:", err);
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
       message: "Failed to resend invite",
+      error: err?.message ?? "Unknown error",
+      details: err?.errors ?? null,
+    });
+  }
+}
+
+export async function previewInvite(req: Request, res: Response) {
+  try {
+    const parsed = invitePreviewSchema.safeParse(req.query);
+    if (!parsed.success) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        message: "Invalid token",
+        issues: parsed.error.issues,
+      });
+    }
+
+    const token = String(parsed.data.token);
+    const tokenHash = sha256(token);
+
+    const invite = await Invite.findOne({
+      where: { token_hash: tokenHash },
+    } as any);
+
+    if (!invite) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Invite not found" });
+    }
+
+    const expiresAt = invite.get("expires_at") as Date;
+    const usedAt = invite.get("used_at") as Date | null;
+
+    const isExpired = expiresAt.getTime() < Date.now();
+    const isUsedOrRevoked = Boolean(usedAt);
+
+    const ranchId = invite.get("ranch_id") as string;
+    const ranch = await Ranch.findByPk(ranchId);
+    if (!ranch) {
+      return res.status(StatusCodes.NOT_FOUND).json({ message: "Ranch not found" });
+    }
+
+    return res.status(StatusCodes.OK).json({
+      invite: {
+        email: invite.get("email"),
+        role: invite.get("role"),
+        expiresAt,
+        usedAt,
+        status: isUsedOrRevoked ? "used" : isExpired ? "expired" : "pending",
+      },
+      ranch: {
+        // use whatever fields you have (slug/name/public_id)
+        id: undefined, // do NOT expose
+        slug: ranch.get("slug"),
+        name: ranch.get("name"),
+      },
+    });
+  } catch (err: any) {
+    console.error("PREVIEW_INVITE_ERROR:", err);
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      message: "Failed to preview invite",
       error: err?.message ?? "Unknown error",
       details: err?.errors ?? null,
     });

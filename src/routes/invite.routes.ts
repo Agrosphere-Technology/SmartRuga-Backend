@@ -22,11 +22,13 @@
 
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
-import { acceptInvite } from "../controllers/invite.controller";
+import { acceptInvite, previewInvite } from "../controllers/invite.controller";
 
 const router = Router();
 
 // Accept invite (token from email/link)
 router.post("/accept", requireAuth(), acceptInvite);
+
+router.get("/invites/preview", previewInvite);
 
 export default router;

@@ -15,3 +15,10 @@ export const createInviteSchema = z.object({
 export const acceptInviteSchema = z.object({
   token: z.string().min(20),
 });
+
+export const invitePreviewSchema = z.object({
+  token: z.string().min(10),
+});
+
+
+

@@ -6,6 +6,7 @@ import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import path from "path";
 import authRoutes from "./routes/auth.routes";
+import userRoutes from "./routes/user.routes";
 import ranchRoutes from "./routes/ranch.routes";
 import adminRoutes from "./routes/admin.routes";
 import inviteRoutes from "./routes/invite.routes";
@@ -58,6 +59,7 @@ app.get("/version", (_req, res) =>
 // routes
 
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/ranches", ranchRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/invites", inviteRoutes);

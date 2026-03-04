@@ -36,6 +36,19 @@ export function RanchAlertFactory(sequelize: Sequelize) {
                 allowNull: false,
                 defaultValue: false,
             },
+
+            // ✅ NEW: who marked it as read (nullable)
+            read_by: {
+                type: DataTypes.UUID,
+                allowNull: true,
+            },
+
+            // ✅ NEW: when it was read (nullable)
+            read_at: {
+                type: DataTypes.DATE,
+                allowNull: true,
+            },
+
             created_at: {
                 type: DataTypes.DATE,
                 allowNull: false,
