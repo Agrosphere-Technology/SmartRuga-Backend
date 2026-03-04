@@ -152,6 +152,15 @@ export async function createInvite(req: Request, res: Response) {
       acceptUrl,
       ...(includeToken ? { token } : {}),
     });
+
+    // Send Mail //
+
+    // await sendMail({
+    //   to: email,
+    //   subject: "SmartRUGA invite",
+    //   html: `<p>You’ve been invited. Click to accept:</p><p><a href="${acceptUrl}">Accept Invite</a></p>`,
+    // });
+
   } catch (err: any) {
     console.error("CREATE_INVITE_ERROR:", err);
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
@@ -424,6 +433,15 @@ export async function resendInvite(req: Request, res: Response) {
       acceptUrl,
       ...(includeToken ? { token } : {}),
     });
+
+    // Send Mail //
+
+    // await sendMail({
+    //   to: email,
+    //   subject: "SmartRUGA invite",
+    //   html: `<p>You’ve been invited. Click to accept:</p><p><a href="${acceptUrl}">Accept Invite</a></p>`,
+    // });
+
   } catch (err: any) {
     console.error("RESEND_INVITE_ERROR:", err);
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({

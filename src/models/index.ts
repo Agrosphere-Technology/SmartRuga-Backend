@@ -10,6 +10,7 @@ import { AnimalFactory } from "./animal.model";
 import { AnimalHealthEventFactory } from "./animalHealthEvent.model";
 import { AnimalActivityEventFactory } from "./animalActivityEvent.model";
 import { RanchAlertFactory } from "./ranchAlert.model";
+import { AnimalVaccinationFactory } from "./animalVaccination";
 
 export const sequelize = new Sequelize(process.env.DATABASE_URL!, {
   dialect: "postgres",
@@ -35,6 +36,7 @@ export const Animal = AnimalFactory(sequelize);
 export const AnimalHealthEvent = AnimalHealthEventFactory(sequelize);
 export const AnimalActivityEvent = AnimalActivityEventFactory(sequelize);
 export const RanchAlert = RanchAlertFactory(sequelize);
+export const Vaccination = AnimalVaccinationFactory(sequelize);
 
 // Associations
 User.hasMany(Ranch, { foreignKey: "created_by", as: "createdRanches" });
@@ -79,6 +81,6 @@ AnimalActivityEvent.belongsTo(User, { foreignKey: "recorded_by", as: "recorder" 
 Ranch.hasMany(RanchAlert, { foreignKey: "ranch_id", as: "alerts" });
 RanchAlert.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 
-// Animal ↔ Alerts
-Animal.hasMany(RanchAlert, { foreignKey: "animal_id", as: "alerts" });
-RanchAlert.belongsTo(Animal, { foreignKey: "animal_id", as: "animal" });
+// Animal ↔ Vaccinations
+Animal.hasMany(Vaccination, { foreignKey: "animal_id", as: "vaccinations" });
+Vaccination.belongsTo(Animal, { foreignKey: "animal_id", as: "animal" });
