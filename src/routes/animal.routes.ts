@@ -1,12 +1,90 @@
-
 // Documentation for Animal routes
-
 
 /**
  * @openapi
  * tags:
  *   - name: Livestock
  *     description: Animals and species management within a ranch
+ */
+
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     AnimalLookupItem:
+ *       type: object
+ *       properties:
+ *         publicId:
+ *           type: string
+ *           format: uuid
+ *         tagNumber:
+ *           type: string
+ *           nullable: true
+ *         rfidTag:
+ *           type: string
+ *           nullable: true
+ *         sex:
+ *           type: string
+ *           enum: [male, female, unknown]
+ *         dateOfBirth:
+ *           type: string
+ *           format: date-time
+ *           nullable: true
+ *         status:
+ *           type: string
+ *           enum: [active, sold, deceased]
+ *         species:
+ *           type: object
+ *           nullable: true
+ *           properties:
+ *             id:
+ *               type: string
+ *               format: uuid
+ *             name:
+ *               type: string
+ *             code:
+ *               type: string
+ *               nullable: true
+ *
+ *     AnimalLookupResponse:
+ *       type: object
+ *       properties:
+ *         animal:
+ *           $ref: '#/components/schemas/AnimalLookupItem'
+ *
+ *     BulkAnimalLookupRequest:
+ *       type: object
+ *       required:
+ *         - identifiers
+ *       properties:
+ *         identifiers:
+ *           type: array
+ *           items:
+ *             type: string
+ *           example:
+ *             - "982000123456789"
+ *             - "WR-COW-0001"
+ *             - "0ec2f8a8-9f08-4cba-a7a6-1df4ce7dcefa"
+ *
+ *     BulkAnimalLookupResultItem:
+ *       type: object
+ *       properties:
+ *         identifier:
+ *           type: string
+ *         animal:
+ *           $ref: '#/components/schemas/AnimalLookupItem'
+ *
+ *     BulkAnimalLookupResponse:
+ *       type: object
+ *       properties:
+ *         found:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/BulkAnimalLookupResultItem'
+ *         notFound:
+ *           type: array
+ *           items:
+ *             type: string
  */
 
 /**
@@ -80,6 +158,90 @@
  *         description: Forbidden
  *       500:
  *         description: Server error
+ */
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals/lookup:
+ *   get:
+ *     tags: [Livestock]
+ *     summary: Look up a single animal by public ID, RFID tag, or tag number
+ *     description: Useful for QR, RFID, or manual tag searches.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *       - in: query
+ *         name: identifier
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "982000123456789"
+ *     responses:
+ *       200:
+ *         description: Animal found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AnimalLookupResponse'
+ *       400:
+ *         description: Invalid request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Animal not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals/lookup/bulk:
+ *   post:
+ *     tags: [Livestock]
+ *     summary: Bulk look up animals by public IDs, RFID tags, or tag numbers
+ *     description: Useful for scanner sessions or bulk matching.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/BulkAnimalLookupRequest'
+ *     responses:
+ *       200:
+ *         description: Bulk lookup result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BulkAnimalLookupResponse'
+ *       400:
+ *         description: Invalid request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
  */
 
 /**
@@ -173,7 +335,7 @@
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: Tag number already exists in this ranch
+ *         description: Tag number or RFID tag already exists
  *         content:
  *           application/json:
  *             schema:
@@ -185,7 +347,6 @@
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-
 
 /**
  * @openapi
@@ -231,7 +392,6 @@
  *         description: Server error
  */
 
-
 // Import necessary modules and middlewares
 
 import { Router } from "express";
@@ -242,6 +402,8 @@ import {
   getAnimalById,
   listAnimals,
   updateAnimal,
+  lookupAnimal,
+  bulkLookupAnimals,
 } from "../controllers/animal.controller";
 import { getAnimalQrPng } from "../controllers/animalQr.controller";
 
@@ -251,21 +413,35 @@ router.post(
   "/:slug/animals",
   requireAuth(),
   requireRanchAccess("slug"),
-  createAnimal,
+  createAnimal
 );
 
 router.get(
   "/:slug/animals",
   requireAuth(),
   requireRanchAccess("slug"),
-  listAnimals,
+  listAnimals
+);
+
+router.get(
+  "/:slug/animals/lookup",
+  requireAuth(),
+  requireRanchAccess("slug"),
+  lookupAnimal
+);
+
+router.post(
+  "/:slug/animals/lookup/bulk",
+  requireAuth(),
+  requireRanchAccess("slug"),
+  bulkLookupAnimals
 );
 
 router.get(
   "/:slug/animals/:id",
   requireAuth(),
   requireRanchAccess("slug"),
-  getAnimalById,
+  getAnimalById
 );
 
 router.patch(
@@ -275,7 +451,6 @@ router.patch(
   updateAnimal
 );
 
-// generate qr code/image
 router.get(
   "/:slug/animals/:id/qr",
   requireAuth(),

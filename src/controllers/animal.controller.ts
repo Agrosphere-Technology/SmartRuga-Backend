@@ -1,11 +1,23 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
-import { Animal, AnimalHealthEvent, sequelize, Species } from "../models";
+import {
+  Animal,
+  AnimalHealthEvent,
+  AnimalActivityEvent,
+  sequelize,
+  Species,
+} from "../models";
 import { Op, QueryTypes } from "sequelize";
 import { buildAnimalQrUrl } from "../utils/qr";
 import { RANCH_ROLES } from "../constants/roles";
-import { listAnimalsQuerySchema, updateAnimalSchema } from "../validators/animal.validator";
-import { AnimalActivityEvent } from "../models";
+import {
+  listAnimalsQuerySchema,
+  updateAnimalSchema,
+} from "../validators/animal.validator";
+import {
+  animalLookupSchema,
+  bulkAnimalLookupSchema,
+} from "../validators/animalLookup.validator";
 import { createRanchAlert } from "../services/ranchAlert.service";
 
 type LatestHealthRow = {
@@ -29,17 +41,33 @@ function canTransition(from: StatusEnum, to: StatusEnum) {
   if (from === to) return true;
   if (from === "active" && (to === "sold" || to === "deceased")) return true;
 
-  // disallow re-activating sold/deceased unless you later decide otherwise
   return false;
 }
 
-// Create Animals
+function mapAnimalLookupResponse(animal: any) {
+  return {
+    publicId: animal.get("public_id"),
+    tagNumber: animal.get("tag_number"),
+    rfidTag: animal.get("rfid_tag"),
+    sex: animal.get("sex"),
+    dateOfBirth: animal.get("date_of_birth"),
+    status: animal.get("status"),
+    species: (animal as any).species
+      ? {
+        id: (animal as any).species.id,
+        name: (animal as any).species.name,
+        code: (animal as any).species.code ?? null,
+      }
+      : null,
+  };
+}
+
+// Create Animal
 export async function createAnimal(req: Request, res: Response) {
   try {
     const ranchId = req.ranch!.id;
     const requesterRole = req.membership!.ranchRole;
 
-    // Only owner, manager, vet can create animals
     if (
       requesterRole !== RANCH_ROLES.OWNER &&
       requesterRole !== RANCH_ROLES.MANAGER &&
@@ -50,9 +78,8 @@ export async function createAnimal(req: Request, res: Response) {
         .json({ message: "Not allowed to create animals" });
     }
 
-    const { speciesId, tagNumber, sex, dateOfBirth } = req.body;
+    const { speciesId, tagNumber, rfidTag, sex, dateOfBirth } = req.body;
 
-    // Ensure species exists
     const species = await Species.findByPk(speciesId);
     if (!species) {
       return res
@@ -60,11 +87,11 @@ export async function createAnimal(req: Request, res: Response) {
         .json({ message: "Invalid species" });
     }
 
-    // check if tagNumber already exists to avoid duplication
-
     if (tagNumber) {
+      const normalizedTag = String(tagNumber).toUpperCase().trim();
+
       const dup = await Animal.findOne({
-        where: { ranch_id: ranchId, tag_number: tagNumber },
+        where: { ranch_id: ranchId, tag_number: normalizedTag },
       });
 
       if (dup) {
@@ -74,10 +101,25 @@ export async function createAnimal(req: Request, res: Response) {
       }
     }
 
+    if (rfidTag) {
+      const normalizedRfid = String(rfidTag).trim();
+
+      const dupRfid = await Animal.findOne({
+        where: { rfid_tag: normalizedRfid },
+      });
+
+      if (dupRfid) {
+        return res.status(StatusCodes.CONFLICT).json({
+          message: "RFID tag already exists",
+        });
+      }
+    }
+
     const animal = await Animal.create({
       ranch_id: ranchId,
       species_id: speciesId,
-      tag_number: tagNumber ?? null,
+      tag_number: tagNumber ? String(tagNumber).toUpperCase().trim() : null,
+      rfid_tag: rfidTag ? String(rfidTag).trim() : null,
       sex,
       date_of_birth: dateOfBirth ?? null,
     });
@@ -85,20 +127,19 @@ export async function createAnimal(req: Request, res: Response) {
     return res.status(StatusCodes.CREATED).json({
       id: animal.get("id") as string,
       publicId: animal.get("public_id"),
+      rfidTag: animal.get("rfid_tag"),
       qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
     });
   } catch (err: any) {
     console.error("CREATE_ANIMAL_ERROR:", err);
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
       message: "Failed to create animal",
+      error: err?.message ?? "Unknown error",
     });
   }
 }
 
-//  List Animals
-
-// query params validation
-
+// List Animals
 export async function listAnimals(req: Request, res: Response) {
   try {
     const ranchId = req.ranch!.id;
@@ -125,17 +166,9 @@ export async function listAnimals(req: Request, res: Response) {
 
     const offset = (page - 1) * limit;
 
-    // Map sortBy → DB column
-    const sortColumn =
-      sortBy === "tagNumber" ? "a.tag_number" : "a.created_at";
+    const sortColumn = sortBy === "tagNumber" ? "a.tag_number" : "a.created_at";
     const sortDir = sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
 
-    /**
-     * We use a LEFT JOIN LATERAL to fetch the latest health event per animal
-     * and COALESCE to default to 'healthy' when there’s no record yet.
-     *
-     * This lets us filter by healthStatus WITHOUT pulling everything into JS.
-     */
     const whereParts: string[] = [`a.ranch_id = $1`];
     const binds: any[] = [ranchId];
 
@@ -153,7 +186,10 @@ export async function listAnimals(req: Request, res: Response) {
     }
     if (q) {
       binds.push(`%${q}%`);
-      whereParts.push(`a.tag_number ILIKE $${binds.length}`);
+      whereParts.push(`(
+        a.tag_number ILIKE $${binds.length}
+        OR a.rfid_tag ILIKE $${binds.length}
+      )`);
     }
     if (healthStatus) {
       binds.push(healthStatus);
@@ -162,7 +198,6 @@ export async function listAnimals(req: Request, res: Response) {
 
     const whereSql = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
 
-    // total count
     const countRows = await sequelize.query<{ total: string }>(
       `
       SELECT COUNT(*)::text AS total
@@ -189,7 +224,6 @@ export async function listAnimals(req: Request, res: Response) {
       });
     }
 
-    // page ids
     const idsRows = await sequelize.query<{ id: string }>(
       `
       SELECT a.id
@@ -210,7 +244,6 @@ export async function listAnimals(req: Request, res: Response) {
 
     const animalIds = idsRows.map((r) => r.id);
 
-    // fetch animals + species using Sequelize
     const animals = await Animal.findAll({
       where: { id: { [Op.in]: animalIds } },
       include: [
@@ -220,18 +253,18 @@ export async function listAnimals(req: Request, res: Response) {
 
     const healthRows = await sequelize.query<LatestHealthRow>(
       `
-        SELECT
-          a.id AS animal_id,
-          COALESCE(h.status, 'healthy') AS status
-        FROM animals a
-        LEFT JOIN LATERAL (
-          SELECT status
-          FROM animal_health_events e
-          WHERE e.animal_id = a.id
-          ORDER BY e.created_at DESC
-          LIMIT 1
-        ) h ON true
-        WHERE a.id = ANY($1::uuid[])
+      SELECT
+        a.id AS animal_id,
+        COALESCE(h.status, 'healthy') AS status
+      FROM animals a
+      LEFT JOIN LATERAL (
+        SELECT status
+        FROM animal_health_events e
+        WHERE e.animal_id = a.id
+        ORDER BY e.created_at DESC
+        LIMIT 1
+      ) h ON true
+      WHERE a.id = ANY($1::uuid[])
       `,
       { bind: [animalIds], type: QueryTypes.SELECT }
     );
@@ -241,17 +274,13 @@ export async function listAnimals(req: Request, res: Response) {
       healthMap.set(r.animal_id, r.status ?? "healthy");
     }
 
-    // preserve pagination order
     const animalById = new Map<string, any>();
-    // for (const a of animals) animalById.set(a.get("id"), a);
     for (const a of animals) {
       const id = a.get("id") as string;
       animalById.set(id, a);
     }
 
-    const ordered = animalIds
-      .map((id) => animalById.get(id))
-      .filter(Boolean);
+    const ordered = animalIds.map((id) => animalById.get(id)).filter(Boolean);
 
     return res.status(StatusCodes.OK).json({
       animals: ordered.map((animal: any) => {
@@ -261,6 +290,7 @@ export async function listAnimals(req: Request, res: Response) {
           publicId: animal.get("public_id"),
           qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
           tagNumber: animal.get("tag_number"),
+          rfidTag: animal.get("rfid_tag"),
           sex: animal.get("sex"),
           status: animal.get("status"),
           healthStatus: healthMap.get(id) ?? "healthy",
@@ -303,14 +333,13 @@ export async function getAnimalById(req: Request, res: Response) {
         .json({ message: "Animal not found" });
     }
 
-    // ✅ latest health status
     const rows = await sequelize.query<{ status: string }>(
       `
-        SELECT status
-        FROM animal_health_events
-        WHERE animal_id = $1
-        ORDER BY created_at DESC
-        LIMIT 1
+      SELECT status
+      FROM animal_health_events
+      WHERE animal_id = $1
+      ORDER BY created_at DESC
+      LIMIT 1
       `,
       {
         bind: [id],
@@ -325,6 +354,7 @@ export async function getAnimalById(req: Request, res: Response) {
       publicId: animal.get("public_id"),
       qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
       tagNumber: animal.get("tag_number"),
+      rfidTag: animal.get("rfid_tag"),
       sex: animal.get("sex"),
       dateOfBirth: animal.get("date_of_birth"),
       status: animal.get("status"),
@@ -342,7 +372,6 @@ export async function getAnimalById(req: Request, res: Response) {
 }
 
 // Update Animal
-
 export async function updateAnimal(req: Request, res: Response) {
   const t = await sequelize.transaction();
 
@@ -357,7 +386,7 @@ export async function updateAnimal(req: Request, res: Response) {
     }
 
     const ranchId = req.ranch!.id;
-    const { id } = req.params; // ✅ route param is :id
+    const { id } = req.params;
     const recorderId = req.user!.id;
     const animalId = String(req.params.id);
 
@@ -384,17 +413,24 @@ export async function updateAnimal(req: Request, res: Response) {
       return res.status(StatusCodes.NOT_FOUND).json({ message: "Animal not found" });
     }
 
-    const { speciesId, tagNumber, sex, dateOfBirth, status, statusNotes } =
-      parsed.data as {
-        speciesId?: string;
-        tagNumber?: string | null;
-        sex?: "male" | "female" | "unknown";
-        dateOfBirth?: string | null;
-        status?: StatusEnum;
-        statusNotes?: string | null;
-      };
+    const {
+      speciesId,
+      tagNumber,
+      rfidTag,
+      sex,
+      dateOfBirth,
+      status,
+      statusNotes,
+    } = parsed.data as {
+      speciesId?: string;
+      tagNumber?: string | null;
+      rfidTag?: string | null;
+      sex?: "male" | "female" | "unknown";
+      dateOfBirth?: string | null;
+      status?: StatusEnum;
+      statusNotes?: string | null;
+    };
 
-    // ✅ If speciesId provided, must exist
     if (speciesId) {
       const species = await Species.findByPk(speciesId, { transaction: t });
       if (!species) {
@@ -403,9 +439,9 @@ export async function updateAnimal(req: Request, res: Response) {
       }
     }
 
-    // ✅ If tagNumber provided, prevent duplicates in same ranch (excluding this animal)
     if (tagNumber !== undefined) {
-      const normalized = tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
+      const normalized =
+        tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
 
       if (normalized) {
         const dup = await Animal.findOne({
@@ -422,16 +458,41 @@ export async function updateAnimal(req: Request, res: Response) {
       }
     }
 
-    // ✅ Build update payload
+    if (rfidTag !== undefined) {
+      const normalizedRfid =
+        rfidTag === null ? null : String(rfidTag).trim();
+
+      if (normalizedRfid) {
+        const dupRfid = await Animal.findOne({
+          where: { rfid_tag: normalizedRfid },
+          transaction: t,
+        } as any);
+
+        if (
+          dupRfid &&
+          (dupRfid.get("id") as string) !== (animal.get("id") as string)
+        ) {
+          await t.rollback();
+          return res.status(StatusCodes.CONFLICT).json({
+            message: "RFID tag already exists",
+          });
+        }
+      }
+    }
+
     const updates: any = {};
     if (speciesId !== undefined) updates.species_id = speciesId;
-    if (tagNumber !== undefined)
-      updates.tag_number = tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
+    if (tagNumber !== undefined) {
+      updates.tag_number =
+        tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
+    }
+    if (rfidTag !== undefined) {
+      updates.rfid_tag = rfidTag === null ? null : String(rfidTag).trim();
+    }
     if (sex !== undefined) updates.sex = sex;
     if (dateOfBirth !== undefined) updates.date_of_birth = dateOfBirth;
     if (status !== undefined) updates.status = status;
 
-    // 🔥 Activity audit events
     const activityEvents: any[] = [];
 
     const pushIfChanged = (
@@ -458,19 +519,30 @@ export async function updateAnimal(req: Request, res: Response) {
       }
     };
 
-    if (speciesId !== undefined)
+    if (speciesId !== undefined) {
       pushIfChanged("species_id", animal.get("species_id"), updates.species_id);
+    }
 
-    if (tagNumber !== undefined)
+    if (tagNumber !== undefined) {
       pushIfChanged("tag_number", animal.get("tag_number"), updates.tag_number);
+    }
 
-    if (sex !== undefined)
+    if (rfidTag !== undefined) {
+      pushIfChanged("rfid_tag", animal.get("rfid_tag"), updates.rfid_tag);
+    }
+
+    if (sex !== undefined) {
       pushIfChanged("sex", animal.get("sex"), updates.sex);
+    }
 
-    if (dateOfBirth !== undefined)
-      pushIfChanged("date_of_birth", animal.get("date_of_birth"), updates.date_of_birth);
+    if (dateOfBirth !== undefined) {
+      pushIfChanged(
+        "date_of_birth",
+        animal.get("date_of_birth"),
+        updates.date_of_birth
+      );
+    }
 
-    // ✅ Status transition + status event + alert
     const currentStatus = animal.get("status") as StatusEnum;
 
     if (status !== undefined && status !== null) {
@@ -499,7 +571,6 @@ export async function updateAnimal(req: Request, res: Response) {
       if (isChanging) {
         const notes = statusNotes ? String(statusNotes).trim() : null;
 
-        // insert status event
         await sequelize.query<InsertedStatusEventRow>(
           `
           INSERT INTO animal_status_events
@@ -515,12 +586,11 @@ export async function updateAnimal(req: Request, res: Response) {
           }
         );
 
-        // add activity record for status change too
         pushIfChanged("status", currentStatus, nextStatus, notes);
 
-        // create alert for sold/deceased
         if (nextStatus === "sold" || nextStatus === "deceased") {
-          const alertType = nextStatus === "sold" ? "status_sold" : "status_deceased";
+          const alertType =
+            nextStatus === "sold" ? "status_sold" : "status_deceased";
           const tag = (animal.get("tag_number") as string) ?? "UN-TAGGED";
           const msg = `Animal ${tag} status changed: ${currentStatus} → ${nextStatus}. ${notes ?? ""}`.trim();
 
@@ -535,10 +605,8 @@ export async function updateAnimal(req: Request, res: Response) {
       }
     }
 
-    // ✅ Save animal updates
     await animal.update(updates, { transaction: t });
 
-    // ✅ Save audit events
     if (activityEvents.length > 0) {
       await AnimalActivityEvent.bulkCreate(activityEvents, { transaction: t });
     }
@@ -551,6 +619,7 @@ export async function updateAnimal(req: Request, res: Response) {
         id: animal.get("id") as string,
         publicId: animal.get("public_id"),
         tagNumber: animal.get("tag_number"),
+        rfidTag: animal.get("rfid_tag"),
         sex: animal.get("sex"),
         dateOfBirth: animal.get("date_of_birth"),
         status: animal.get("status"),
@@ -565,6 +634,154 @@ export async function updateAnimal(req: Request, res: Response) {
       message: "Failed to update animal",
       error: err?.message ?? "Unknown error",
       details: err?.errors ?? null,
+    });
+  }
+}
+
+// Single lookup by public_id, RFID tag, or tag number
+export async function lookupAnimal(req: Request, res: Response) {
+  try {
+    const parsed = animalLookupSchema.safeParse(req.query);
+
+    if (!parsed.success) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        message: "Invalid lookup query",
+        issues: parsed.error.issues,
+      });
+    }
+
+    const ranchId = req.ranch!.id;
+    const identifier = parsed.data.identifier.trim();
+
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        identifier
+      );
+
+    const orConditions: any[] = [
+      { rfid_tag: identifier },
+      { tag_number: identifier },
+    ];
+
+    if (isUuid) {
+      orConditions.unshift({ public_id: identifier });
+    }
+
+    const animal = await Animal.findOne({
+      where: {
+        ranch_id: ranchId,
+        [Op.or]: orConditions,
+      },
+      include: [
+        {
+          model: Species,
+          as: "species",
+          attributes: ["id", "name", "code"],
+          required: false,
+        },
+      ],
+    } as any);
+
+    if (!animal) {
+      return res.status(StatusCodes.NOT_FOUND).json({
+        message: "Animal not found",
+      });
+    }
+
+    return res.status(StatusCodes.OK).json({
+      animal: mapAnimalLookupResponse(animal),
+    });
+  } catch (err: any) {
+    console.error("LOOKUP_ANIMAL_ERROR:", err);
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      message: "Failed to look up animal",
+      error: err?.message ?? "Unknown error",
+    });
+  }
+}
+
+// Bulk lookup by public_id, RFID tag, or tag number
+export async function bulkLookupAnimals(req: Request, res: Response) {
+  try {
+    const parsed = bulkAnimalLookupSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        message: "Invalid payload",
+        issues: parsed.error.issues,
+      });
+    }
+
+    const ranchId = req.ranch!.id;
+    const identifiers = parsed.data.identifiers.map((v) => v.trim());
+
+    const uuidIdentifiers = identifiers.filter((identifier) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        identifier
+      )
+    );
+
+    const orConditions: any[] = [
+      { rfid_tag: { [Op.in]: identifiers } },
+      { tag_number: { [Op.in]: identifiers } },
+    ];
+
+    if (uuidIdentifiers.length > 0) {
+      orConditions.unshift({ public_id: { [Op.in]: uuidIdentifiers } });
+    }
+
+    const animals = await Animal.findAll({
+      where: {
+        ranch_id: ranchId,
+        [Op.or]: orConditions,
+      },
+      include: [
+        {
+          model: Species,
+          as: "species",
+          attributes: ["id", "name", "code"],
+          required: false,
+        },
+      ],
+    } as any);
+
+    const foundByIdentifier = new Map<string, any>();
+
+    for (const animal of animals as any[]) {
+      const publicId = animal.get("public_id");
+      const rfidTag = animal.get("rfid_tag");
+      const tagNumber = animal.get("tag_number");
+
+      if (publicId) foundByIdentifier.set(publicId, animal);
+      if (rfidTag) foundByIdentifier.set(rfidTag, animal);
+      if (tagNumber) foundByIdentifier.set(tagNumber, animal);
+    }
+
+    const found: any[] = [];
+    const notFound: string[] = [];
+
+    for (const identifier of identifiers) {
+      const animal = foundByIdentifier.get(identifier);
+
+      if (animal) {
+        found.push({
+          identifier,
+          animal: mapAnimalLookupResponse(animal),
+        });
+      } else {
+        notFound.push(identifier);
+      }
+    }
+
+    return res.status(StatusCodes.OK).json({
+      found,
+      notFound,
+    });
+  } catch (err: any) {
+    console.error("BULK_LOOKUP_ANIMALS_ERROR:", err);
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      message: "Failed to bulk look up animals",
+      error: err?.message ?? "Unknown error",
     });
   }
 }

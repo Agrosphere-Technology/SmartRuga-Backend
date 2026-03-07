@@ -24,6 +24,7 @@ export const updateAnimalSchema = z
         speciesId: z.string().uuid().optional(),
         tagNumber: z.string().min(1).max(100).nullable().optional(),
         sex: z.enum(["male", "female", "unknown"]).optional(),
+        rfidTag: z.string().min(1).max(100).nullable().optional(),
         dateOfBirth: z.string().date().nullable().optional(), // "YYYY-MM-DD"
         status: z.enum(["active", "sold", "deceased"]).optional(),
         statusNotes: z.string().max(1000).optional().nullable(),

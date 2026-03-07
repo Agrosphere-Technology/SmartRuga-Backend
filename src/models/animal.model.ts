@@ -11,7 +11,7 @@ export function AnimalFactory(sequelize: Sequelize) {
         defaultValue: DataTypes.UUIDV4,
       },
 
-      // QR identity (safe public identifier)
+      // QR-safe public identifier
       public_id: {
         type: DataTypes.UUID,
         allowNull: false,
@@ -32,6 +32,13 @@ export function AnimalFactory(sequelize: Sequelize) {
       tag_number: {
         type: DataTypes.STRING(100),
         allowNull: true,
+      },
+
+      // RFID / electronic tag identifier
+      rfid_tag: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        unique: true,
       },
 
       sex: {
@@ -55,6 +62,6 @@ export function AnimalFactory(sequelize: Sequelize) {
       tableName: "animals",
       underscored: true,
       timestamps: true,
-    },
+    }
   );
 }

@@ -215,8 +215,17 @@ export const swaggerSchemas = {
     properties: {
       speciesId: { type: "string", format: "uuid" },
       tagNumber: { type: "string", example: "COW-001" },
-      sex: { type: "string", enum: ["male", "female", "unknown"], example: "female" },
-      dateOfBirth: { type: "string", format: "date", example: "2023-05-01" },
+      rfidTag: { type: "string", nullable: true, example: "982000123456789" },
+      sex: {
+        type: "string",
+        enum: ["male", "female", "unknown"],
+        example: "female",
+      },
+      dateOfBirth: {
+        type: "string",
+        format: "date",
+        example: "2023-05-01",
+      },
     },
     required: ["speciesId"],
   },
@@ -419,9 +428,18 @@ export const swaggerSchemas = {
     properties: {
       speciesId: { type: "string", format: "uuid" },
       tagNumber: { type: ["string", "null"], example: "COW-002" },
+      rfidTag: { type: ["string", "null"], example: "982000123456789" },
       sex: { type: "string", enum: ["male", "female", "unknown"] },
-      dateOfBirth: { type: ["string", "null"], format: "date", example: "2023-05-01" },
+      dateOfBirth: {
+        type: ["string", "null"],
+        format: "date",
+        example: "2023-05-01",
+      },
       status: { type: "string", enum: ["active", "sold", "deceased"] },
+      statusNotes: {
+        type: ["string", "null"],
+        example: "Sold to partner ranch",
+      },
     },
     additionalProperties: false,
   },
