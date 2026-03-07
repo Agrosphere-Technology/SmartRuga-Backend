@@ -292,7 +292,12 @@
  *   patch:
  *     tags: [Livestock]
  *     summary: Update an animal (partial update)
- *     description: Updates one or more animal fields. Only owner/manager/vet can update.
+ *     description: Updates one or more animal fields.
+ *      Permissions:
+ *       - Owner: can update all fields including status
+ *       - Manager: can update all fields including status
+ *       - Vet: can update animal details but cannot change status
+ *        - Worker / Storekeeper: cannot update animals
  *     security:
  *       - bearerAuth: []
  *     parameters:

@@ -391,10 +391,15 @@ export async function updateAnimal(req: Request, res: Response) {
     const animalId = String(req.params.id);
 
     const requesterRole = req.membership!.ranchRole;
+
     const canUpdate =
       requesterRole === RANCH_ROLES.OWNER ||
       requesterRole === RANCH_ROLES.MANAGER ||
       requesterRole === RANCH_ROLES.VET;
+
+    const canChangeStatus =
+      requesterRole === RANCH_ROLES.OWNER ||
+      requesterRole === RANCH_ROLES.MANAGER;
 
     if (!canUpdate) {
       await t.rollback();
@@ -410,7 +415,9 @@ export async function updateAnimal(req: Request, res: Response) {
 
     if (!animal) {
       await t.rollback();
-      return res.status(StatusCodes.NOT_FOUND).json({ message: "Animal not found" });
+      return res
+        .status(StatusCodes.NOT_FOUND)
+        .json({ message: "Animal not found" });
     }
 
     const {
@@ -435,7 +442,9 @@ export async function updateAnimal(req: Request, res: Response) {
       const species = await Species.findByPk(speciesId, { transaction: t });
       if (!species) {
         await t.rollback();
-        return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid species" });
+        return res
+          .status(StatusCodes.BAD_REQUEST)
+          .json({ message: "Invalid species" });
       }
     }
 
@@ -491,7 +500,6 @@ export async function updateAnimal(req: Request, res: Response) {
     }
     if (sex !== undefined) updates.sex = sex;
     if (dateOfBirth !== undefined) updates.date_of_birth = dateOfBirth;
-    if (status !== undefined) updates.status = status;
 
     const activityEvents: any[] = [];
 
@@ -501,8 +509,10 @@ export async function updateAnimal(req: Request, res: Response) {
       toVal: any,
       notes?: string | null
     ) => {
-      const fromStr = fromVal === undefined || fromVal === null ? null : String(fromVal);
-      const toStr = toVal === undefined || toVal === null ? null : String(toVal);
+      const fromStr =
+        fromVal === undefined || fromVal === null ? null : String(fromVal);
+      const toStr =
+        toVal === undefined || toVal === null ? null : String(toVal);
 
       if (fromStr !== toStr) {
         activityEvents.push({
@@ -547,6 +557,14 @@ export async function updateAnimal(req: Request, res: Response) {
 
     if (status !== undefined && status !== null) {
       const nextStatus = status as StatusEnum;
+      const isChanging = currentStatus !== nextStatus;
+
+      if (isChanging && !canChangeStatus) {
+        await t.rollback();
+        return res.status(StatusCodes.FORBIDDEN).json({
+          message: "Only owner or manager can change animal status",
+        });
+      }
 
       if (!canTransition(currentStatus, nextStatus)) {
         await t.rollback();
@@ -555,8 +573,8 @@ export async function updateAnimal(req: Request, res: Response) {
         });
       }
 
-      const isChanging = currentStatus !== nextStatus;
-      const requiresNote = nextStatus === "sold" || nextStatus === "deceased";
+      const requiresNote =
+        nextStatus === "sold" || nextStatus === "deceased";
 
       if (isChanging && requiresNote) {
         const note = (statusNotes ?? "").toString().trim();
@@ -570,6 +588,8 @@ export async function updateAnimal(req: Request, res: Response) {
 
       if (isChanging) {
         const notes = statusNotes ? String(statusNotes).trim() : null;
+
+        updates.status = nextStatus;
 
         await sequelize.query<InsertedStatusEventRow>(
           `
