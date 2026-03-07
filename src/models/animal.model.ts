@@ -29,6 +29,11 @@ export function AnimalFactory(sequelize: Sequelize) {
         allowNull: false,
       },
 
+      current_location_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+
       tag_number: {
         type: DataTypes.STRING(100),
         allowNull: true,

@@ -18,6 +18,8 @@ import animalTimelineRoutes from "./routes/animalTimeline.routes";
 import activityRoutes from "./routes/activity.routes";
 import ranchAlertRoutes from "./routes/ranchAlert.routes";
 import vaccinationRoutes from "./routes/vaccination.routes";
+import animalMovementRoutes from "./routes/animalMovement.routes";
+import ranchLocationRoutes from "./routes/ranchLocation.routes";
 import qrRoutes from "./routes/qr.routes";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./docs/swagger";
@@ -70,8 +72,9 @@ app.use("/api/v1/ranches", animalRoutes);
 app.use("/api/v1/ranches", animalHealthEventRoutes);
 app.use("/api/v1/ranches", animalTimelineRoutes);
 app.use("/api/v1/ranches", ranchAlertRoutes);
-
+app.use("/api/v1/ranches", animalMovementRoutes);
 app.use("/api/v1/ranches", activityRoutes); // Ranch Activity
+app.use("/api/v1/ranches", ranchLocationRoutes);
 app.use("/api/v1", speciesRoutes);
 app.use(qrRoutes);
 

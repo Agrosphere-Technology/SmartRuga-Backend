@@ -548,6 +548,26 @@ export const swaggerSchemas = {
     required: ["animal", "pagination", "events"],
   },
 
+  AnimalListResponse: {
+    type: "object",
+    properties: {
+      animals: {
+        type: "array",
+        items: { $ref: "#/components/schemas/AnimalLookupItem" }
+      },
+      pagination: {
+        type: "object",
+        properties: {
+          page: { type: "integer", example: 1 },
+          limit: { type: "integer", example: 50 },
+          total: { type: "integer", example: 234 },
+          totalPages: { type: "integer", example: 5 }
+        }
+      }
+    }
+  }
+
 };
+
 
 

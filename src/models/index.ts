@@ -10,7 +10,9 @@ import { AnimalFactory } from "./animal.model";
 import { AnimalHealthEventFactory } from "./animalHealthEvent.model";
 import { AnimalActivityEventFactory } from "./animalActivityEvent.model";
 import { RanchAlertFactory } from "./ranchAlert.model";
-import { AnimalVaccinationFactory } from "./animalVaccination";
+import { AnimalVaccinationFactory } from "./animalVaccination.model";
+import { AnimalMovementEventFactory } from "./animalMovementEvent.model";
+import { RanchLocationFactory } from "./ranchLocation.model";
 
 export const sequelize = new Sequelize(process.env.DATABASE_URL!, {
   dialect: "postgres",
@@ -33,54 +35,141 @@ export const Species = SpecieFactory(sequelize);
 export const Invite = InviteFactory(sequelize);
 export const RefreshToken = RefreshTokenFactory(sequelize);
 export const Animal = AnimalFactory(sequelize);
+export const RanchLocation = RanchLocationFactory(sequelize);
 export const AnimalHealthEvent = AnimalHealthEventFactory(sequelize);
 export const AnimalActivityEvent = AnimalActivityEventFactory(sequelize);
+export const AnimalMovementEvent = AnimalMovementEventFactory(sequelize);
 export const RanchAlert = RanchAlertFactory(sequelize);
 export const Vaccination = AnimalVaccinationFactory(sequelize);
 
-// Associations
+// User ↔ Ranch
 User.hasMany(Ranch, { foreignKey: "created_by", as: "createdRanches" });
 Ranch.belongsTo(User, { foreignKey: "created_by", as: "creator" });
 
+// Ranch ↔ RanchMember
 Ranch.hasMany(RanchMember, { foreignKey: "ranch_id", as: "members" });
 RanchMember.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 
 User.hasMany(RanchMember, { foreignKey: "user_id", as: "memberships" });
 RanchMember.belongsTo(User, { foreignKey: "user_id" });
 
+// Ranch ↔ Invite
 Ranch.hasMany(Invite, { foreignKey: "ranch_id", as: "invites" });
 Invite.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 
 User.hasMany(Invite, { foreignKey: "created_by", as: "createdInvites" });
 Invite.belongsTo(User, { foreignKey: "created_by", as: "creator" });
 
+// User ↔ RefreshToken
 User.hasMany(RefreshToken, { foreignKey: "user_id", as: "refreshTokens" });
 RefreshToken.belongsTo(User, { foreignKey: "user_id" });
 
-// Ranch ↔ Animals
+// Ranch ↔ Animal
 Ranch.hasMany(Animal, { foreignKey: "ranch_id", as: "animals" });
 Animal.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 
-// Species ↔ Animals
+// Species ↔ Animal
 Species.hasMany(Animal, { foreignKey: "species_id", as: "animals" });
 Animal.belongsTo(Species, { foreignKey: "species_id", as: "species" });
 
+// Ranch ↔ RanchLocation
+Ranch.hasMany(RanchLocation, { foreignKey: "ranch_id", as: "locations" });
+RanchLocation.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 
-Animal.hasMany(AnimalHealthEvent, { foreignKey: "animal_id", as: "healthEvents" });
+// RanchLocation ↔ Animal (current location)
+RanchLocation.hasMany(Animal, {
+  foreignKey: "current_location_id",
+  as: "animalsCurrentlyHere",
+});
+Animal.belongsTo(RanchLocation, {
+  foreignKey: "current_location_id",
+  as: "currentLocation",
+});
 
-AnimalHealthEvent.belongsTo(Animal, { foreignKey: "animal_id", as: "animal" });
+// Animal ↔ AnimalHealthEvent
+Animal.hasMany(AnimalHealthEvent, {
+  foreignKey: "animal_id",
+  as: "healthEvents",
+});
+AnimalHealthEvent.belongsTo(Animal, {
+  foreignKey: "animal_id",
+  as: "animal",
+});
 
+// Animal ↔ AnimalActivityEvent
+Animal.hasMany(AnimalActivityEvent, {
+  foreignKey: "animal_id",
+  as: "activityEvents",
+});
+AnimalActivityEvent.belongsTo(Animal, {
+  foreignKey: "animal_id",
+  as: "animal",
+});
 
-Animal.hasMany(AnimalActivityEvent, { foreignKey: "animal_id", as: "activityEvents" });
-AnimalActivityEvent.belongsTo(Animal, { foreignKey: "animal_id", as: "animal" });
+// User ↔ AnimalActivityEvent
+User.hasMany(AnimalActivityEvent, {
+  foreignKey: "recorded_by",
+  as: "animalActivityEvents",
+});
+AnimalActivityEvent.belongsTo(User, {
+  foreignKey: "recorded_by",
+  as: "recorder",
+});
 
-User.hasMany(AnimalActivityEvent, { foreignKey: "recorded_by", as: "animalActivityEvents" });
-AnimalActivityEvent.belongsTo(User, { foreignKey: "recorded_by", as: "recorder" });
-
-// Ranch ↔ Alerts
+// Ranch ↔ RanchAlert
 Ranch.hasMany(RanchAlert, { foreignKey: "ranch_id", as: "alerts" });
 RanchAlert.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 
-// Animal ↔ Vaccinations
+// Animal ↔ Vaccination
 Animal.hasMany(Vaccination, { foreignKey: "animal_id", as: "vaccinations" });
 Vaccination.belongsTo(Animal, { foreignKey: "animal_id", as: "animal" });
+
+// Animal ↔ AnimalMovementEvent
+Animal.hasMany(AnimalMovementEvent, {
+  foreignKey: "animal_id",
+  as: "movementEvents",
+});
+AnimalMovementEvent.belongsTo(Animal, {
+  foreignKey: "animal_id",
+  as: "animal",
+});
+
+// User ↔ AnimalMovementEvent
+User.hasMany(AnimalMovementEvent, {
+  foreignKey: "recorded_by",
+  as: "animalMovementEvents",
+});
+AnimalMovementEvent.belongsTo(User, {
+  foreignKey: "recorded_by",
+  as: "recorder",
+});
+
+// Ranch ↔ AnimalMovementEvent
+Ranch.hasMany(AnimalMovementEvent, {
+  foreignKey: "ranch_id",
+  as: "movementEvents",
+});
+AnimalMovementEvent.belongsTo(Ranch, {
+  foreignKey: "ranch_id",
+  as: "ranch",
+});
+
+// RanchLocation ↔ AnimalMovementEvent (from location)
+RanchLocation.hasMany(AnimalMovementEvent, {
+  foreignKey: "from_location_id",
+  as: "outgoingMovements",
+});
+AnimalMovementEvent.belongsTo(RanchLocation, {
+  foreignKey: "from_location_id",
+  as: "fromLocation",
+});
+
+// RanchLocation ↔ AnimalMovementEvent (to location)
+RanchLocation.hasMany(AnimalMovementEvent, {
+  foreignKey: "to_location_id",
+  as: "incomingMovements",
+});
+AnimalMovementEvent.belongsTo(RanchLocation, {
+  foreignKey: "to_location_id",
+  as: "toLocation",
+});

@@ -5,6 +5,8 @@
  * tags:
  *   - name: Livestock
  *     description: Animals and species management within a ranch
+ *   - name: QR
+ *     description: QR code utilities for animal scanning
  */
 
 /**
@@ -91,7 +93,8 @@
  * @openapi
  * /api/v1/ranches/{slug}/animals:
  *   post:
- *     tags: [Livestock]
+ *     tags:
+ *       - Livestock
  *     summary: Create an animal in a ranch
  *     security:
  *       - bearerAuth: []
@@ -129,7 +132,8 @@
  *         description: Server error
  *
  *   get:
- *     tags: [Livestock]
+ *     tags:
+ *       - Livestock
  *     summary: List animals in a ranch
  *     security:
  *       - bearerAuth: []
@@ -146,12 +150,7 @@
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 animals:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Animal'
+ *               $ref: '#/components/schemas/AnimalListResponse'
  *       401:
  *         description: Unauthorized
  *       403:
@@ -164,7 +163,8 @@
  * @openapi
  * /api/v1/ranches/{slug}/animals/lookup:
  *   get:
- *     tags: [Livestock]
+ *     tags:
+ *       - Livestock
  *     summary: Look up a single animal by public ID, RFID tag, or tag number
  *     description: Useful for QR, RFID, or manual tag searches.
  *     security:
@@ -209,7 +209,8 @@
  * @openapi
  * /api/v1/ranches/{slug}/animals/lookup/bulk:
  *   post:
- *     tags: [Livestock]
+ *     tags:
+ *       - Livestock
  *     summary: Bulk look up animals by public IDs, RFID tags, or tag numbers
  *     description: Useful for scanner sessions or bulk matching.
  *     security:
@@ -248,7 +249,8 @@
  * @openapi
  * /api/v1/ranches/{slug}/animals/{id}:
  *   get:
- *     tags: [Livestock]
+ *     tags:
+ *       - Livestock
  *     summary: Get an animal by internal ID (ranch scoped)
  *     security:
  *       - bearerAuth: []
@@ -271,7 +273,7 @@
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Animal'
+ *               $ref: '#/components/schemas/AnimalLookupItem'
  *       404:
  *         description: Animal not found
  *         content:
@@ -290,26 +292,32 @@
  * @openapi
  * /api/v1/ranches/{slug}/animals/{id}:
  *   patch:
- *     tags: [Livestock]
+ *     tags:
+ *       - Livestock
  *     summary: Update an animal (partial update)
- *     description: Updates one or more animal fields.
- *      Permissions:
+ *     description: |
+ *       Updates one or more animal fields.
+ *
+ *       Permissions:
  *       - Owner: can update all fields including status
  *       - Manager: can update all fields including status
  *       - Vet: can update animal details but cannot change status
- *        - Worker / Storekeeper: cannot update animals
+ *       - Worker / Storekeeper: cannot update animals
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: slug
  *         required: true
- *         schema: { type: string }
+ *         schema:
+ *           type: string
  *         example: test-wolf-ranch
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: string, format: uuid }
+ *         schema:
+ *           type: string
+ *           format: uuid
  *     requestBody:
  *       required: true
  *       content:
@@ -357,7 +365,8 @@
  * @openapi
  * /api/v1/ranches/{slug}/animals/{id}/qr:
  *   get:
- *     tags: [QR]
+ *     tags:
+ *       - QR
  *     summary: Generate QR code PNG for an animal
  *     description: Returns a PNG image for printing animal tags. QR encodes the public scan URL (/a/{publicId}).
  *     security:
