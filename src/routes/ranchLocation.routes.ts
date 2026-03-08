@@ -279,6 +279,68 @@
  */
 
 
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/inventory:
+ *   get:
+ *     tags:
+ *       - Ranch Locations
+ *     summary: Get ranch inventory overview
+ *     description: Returns ranch locations with the count of animals currently assigned to each location.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *     responses:
+ *       200:
+ *         description: Ranch inventory overview
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 totalLocations:
+ *                   type: integer
+ *                 totalAnimals:
+ *                   type: integer
+ *                 locations:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         format: uuid
+ *                       name:
+ *                         type: string
+ *                       code:
+ *                         type: string
+ *                         nullable: true
+ *                       locationType:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ *                         nullable: true
+ *                       isActive:
+ *                         type: boolean
+ *                       animalCount:
+ *                         type: integer
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Ranch not found
+ *       500:
+ *         description: Server error
+ */
+
+
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { requireRanchAccess } from "../middlewares/ranchAccess";
@@ -288,6 +350,7 @@ import {
     getRanchLocationById,
     updateRanchLocation,
     listAnimalsInLocation,
+    getRanchInventory,
 } from "../controllers/ranchLocation.controller";
 
 const router = Router({ mergeParams: true });
@@ -325,6 +388,14 @@ router.get(
     requireAuth(),
     requireRanchAccess("slug"),
     listAnimalsInLocation
+);
+
+
+router.get(
+    "/:slug/inventory",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    getRanchInventory
 );
 
 export default router;

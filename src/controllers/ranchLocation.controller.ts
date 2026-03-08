@@ -5,6 +5,7 @@ import {
     createRanchLocationSchema,
     updateRanchLocationSchema,
 } from "../validators/ranchLocation.validator";
+import { col, fn } from "sequelize";
 
 export async function createRanchLocation(req: Request, res: Response) {
     try {
@@ -292,6 +293,83 @@ export async function listAnimalsInLocation(req: Request, res: Response) {
         console.error("LIST_ANIMALS_IN_LOCATION_ERROR:", error);
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             message: "Failed to list animals in location",
+            error: error?.message ?? "Unknown error",
+        });
+    }
+}
+
+// Ranch Locations Summary or Inventory
+
+export async function getRanchInventory(req: Request, res: Response) {
+    try {
+        const { slug } = req.params;
+
+        const ranch = await Ranch.findOne({ where: { slug } });
+
+        if (!ranch) {
+            return res
+                .status(StatusCodes.NOT_FOUND)
+                .json({ message: "Ranch not found" });
+        }
+
+        const ranchId = ranch.get("id") as string;
+
+        const locations = await RanchLocation.findAll({
+            where: { ranch_id: ranchId },
+            attributes: [
+                "id",
+                "public_id",
+                "name",
+                "code",
+                "location_type",
+                "description",
+                "is_active",
+                [fn("COUNT", col("animalsCurrentlyHere.id")), "animal_count"],
+            ],
+            include: [
+                {
+                    model: Animal,
+                    as: "animalsCurrentlyHere",
+                    attributes: [],
+                    required: false,
+                },
+            ],
+            group: [
+                "RanchLocation.id",
+                "RanchLocation.public_id",
+                "RanchLocation.name",
+                "RanchLocation.code",
+                "RanchLocation.location_type",
+                "RanchLocation.description",
+                "RanchLocation.is_active",
+            ],
+            order: [["name", "ASC"]],
+            subQuery: false,
+        } as any);
+
+        const totalAnimals = locations.reduce(
+            (sum: number, location: any) =>
+                sum + Number(location.get("animal_count") || 0),
+            0
+        );
+
+        return res.status(StatusCodes.OK).json({
+            totalLocations: locations.length,
+            totalAnimals,
+            locations: locations.map((location: any) => ({
+                id: location.get("public_id"),
+                name: location.get("name"),
+                code: location.get("code"),
+                locationType: location.get("location_type"),
+                description: location.get("description"),
+                isActive: location.get("is_active"),
+                animalCount: Number(location.get("animal_count") || 0),
+            })),
+        });
+    } catch (error: any) {
+        console.error("GET_RANCH_INVENTORY_ERROR:", error);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to get ranch inventory",
             error: error?.message ?? "Unknown error",
         });
     }
