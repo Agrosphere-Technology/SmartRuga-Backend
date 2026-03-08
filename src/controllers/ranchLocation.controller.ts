@@ -300,7 +300,7 @@ export async function listAnimalsInLocation(req: Request, res: Response) {
 
 // Ranch Locations Summary or Inventory
 
-export async function getRanchInventory(req: Request, res: Response) {
+export async function getRanchLocationInventory(req: Request, res: Response) {
     try {
         const { slug } = req.params;
 
@@ -367,7 +367,7 @@ export async function getRanchInventory(req: Request, res: Response) {
             })),
         });
     } catch (error: any) {
-        console.error("GET_RANCH_INVENTORY_ERROR:", error);
+        console.error("GET_RANCH_LOCATION_INVENTORY_ERROR:", error);
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             message: "Failed to get ranch inventory",
             error: error?.message ?? "Unknown error",

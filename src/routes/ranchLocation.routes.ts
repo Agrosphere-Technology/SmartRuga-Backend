@@ -281,11 +281,11 @@
 
 /**
  * @openapi
- * /api/v1/ranches/{slug}/inventory:
+ * /api/v1/ranches/{slug}/location-inventory:
  *   get:
  *     tags:
  *       - Ranch Locations
- *     summary: Get ranch inventory overview
+ *     summary: Get ranch location inventory overview
  *     description: Returns ranch locations with the count of animals currently assigned to each location.
  *     security:
  *       - bearerAuth: []
@@ -298,7 +298,7 @@
  *         example: test-wolf-ranch
  *     responses:
  *       200:
- *         description: Ranch inventory overview
+ *         description: Ranch location inventory overview
  *         content:
  *           application/json:
  *             schema:
@@ -350,7 +350,7 @@ import {
     getRanchLocationById,
     updateRanchLocation,
     listAnimalsInLocation,
-    getRanchInventory,
+    getRanchLocationInventory,
 } from "../controllers/ranchLocation.controller";
 
 const router = Router({ mergeParams: true });
@@ -392,10 +392,10 @@ router.get(
 
 
 router.get(
-    "/:slug/inventory",
+    "/:slug/location-inventory",
     requireAuth(),
     requireRanchAccess("slug"),
-    getRanchInventory
+    getRanchLocationInventory
 );
 
 export default router;
