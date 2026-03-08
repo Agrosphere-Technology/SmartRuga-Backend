@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
-import { Ranch, RanchLocation } from "../models";
+import { Animal, Ranch, RanchLocation, Species } from "../models";
 import {
     createRanchLocationSchema,
     updateRanchLocationSchema,
@@ -213,6 +213,86 @@ export async function updateRanchLocation(req: Request, res: Response) {
         return res.status(StatusCodes.BAD_REQUEST).json({
             message: error?.issues ? "Invalid payload" : error.message || "Server error",
             errors: error?.issues || undefined,
+        });
+    }
+}
+
+// Lis Animals In a Location
+
+export async function listAnimalsInLocation(req: Request, res: Response) {
+    try {
+        const { slug, id } = req.params;
+
+        const ranch = await Ranch.findOne({ where: { slug } });
+
+        if (!ranch) {
+            return res
+                .status(StatusCodes.NOT_FOUND)
+                .json({ message: "Ranch not found" });
+        }
+
+        const ranchId = ranch.get("id") as string;
+
+        const location = await RanchLocation.findOne({
+            where: {
+                ranch_id: ranchId,
+                public_id: id,
+            },
+        });
+
+        if (!location) {
+            return res
+                .status(StatusCodes.NOT_FOUND)
+                .json({ message: "Location not found" });
+        }
+
+        const animals = await Animal.findAll({
+            where: {
+                ranch_id: ranchId,
+                current_location_id: location.get("id"),
+            },
+            include: [
+                {
+                    model: Species,
+                    as: "species",
+                    attributes: ["id", "name", "code"],
+                    required: false,
+                },
+            ],
+            order: [["created_at", "DESC"]],
+        } as any);
+
+        return res.status(StatusCodes.OK).json({
+            location: {
+                id: location.get("public_id"),
+                name: location.get("name"),
+                code: location.get("code"),
+                locationType: location.get("location_type"),
+                description: location.get("description"),
+                isActive: location.get("is_active"),
+            },
+            animalCount: animals.length,
+            animals: animals.map((animal: any) => ({
+                publicId: animal.get("public_id"),
+                tagNumber: animal.get("tag_number"),
+                rfidTag: animal.get("rfid_tag"),
+                sex: animal.get("sex"),
+                dateOfBirth: animal.get("date_of_birth"),
+                status: animal.get("status"),
+                species: animal.species
+                    ? {
+                        id: animal.species.get("id"),
+                        name: animal.species.get("name"),
+                        code: animal.species.get("code"),
+                    }
+                    : null,
+            })),
+        });
+    } catch (error: any) {
+        console.error("LIST_ANIMALS_IN_LOCATION_ERROR:", error);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to list animals in location",
+            error: error?.message ?? "Unknown error",
         });
     }
 }

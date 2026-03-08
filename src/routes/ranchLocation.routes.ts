@@ -185,6 +185,99 @@
  *               $ref: '#/components/schemas/RanchLocationResponse'
  */
 
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/locations/{id}/animals:
+ *   get:
+ *     tags:
+ *       - Ranch Locations
+ *     summary: List animals currently assigned to a ranch location
+ *     description: Returns all animals whose current location is the specified ranch location.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Animals currently in the location
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 location:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                     name:
+ *                       type: string
+ *                     code:
+ *                       type: string
+ *                       nullable: true
+ *                     locationType:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                       nullable: true
+ *                     isActive:
+ *                       type: boolean
+ *                 animals:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       publicId:
+ *                         type: string
+ *                         format: uuid
+ *                       tagNumber:
+ *                         type: string
+ *                         nullable: true
+ *                       rfidTag:
+ *                         type: string
+ *                         nullable: true
+ *                       sex:
+ *                         type: string
+ *                       dateOfBirth:
+ *                         type: string
+ *                         format: date-time
+ *                         nullable: true
+ *                       status:
+ *                         type: string
+ *                       species:
+ *                         type: object
+ *                         nullable: true
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                             format: uuid
+ *                           name:
+ *                             type: string
+ *                           code:
+ *                             type: string
+ *                             nullable: true
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Ranch or location not found
+ *       500:
+ *         description: Server error
+ */
+
 
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
@@ -194,6 +287,7 @@ import {
     listRanchLocations,
     getRanchLocationById,
     updateRanchLocation,
+    listAnimalsInLocation,
 } from "../controllers/ranchLocation.controller";
 
 const router = Router({ mergeParams: true });
@@ -224,6 +318,13 @@ router.patch(
     requireAuth(),
     requireRanchAccess("slug"),
     updateRanchLocation
+);
+
+router.get(
+    "/:slug/locations/:id/animals",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    listAnimalsInLocation
 );
 
 export default router;
