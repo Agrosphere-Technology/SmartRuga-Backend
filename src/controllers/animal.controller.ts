@@ -47,11 +47,17 @@ function canTransition(from: StatusEnum, to: StatusEnum) {
 function mapAnimalLookupResponse(animal: any) {
   return {
     publicId: animal.get("public_id"),
+
     tagNumber: animal.get("tag_number"),
     rfidTag: animal.get("rfid_tag"),
+
+    breed: animal.get("breed"),
+    weight: animal.get("weight"),
+
     sex: animal.get("sex"),
     dateOfBirth: animal.get("date_of_birth"),
     status: animal.get("status"),
+
     species: (animal as any).species
       ? {
         id: (animal as any).species.id,
@@ -78,7 +84,7 @@ export async function createAnimal(req: Request, res: Response) {
         .json({ message: "Not allowed to create animals" });
     }
 
-    const { speciesId, tagNumber, rfidTag, sex, dateOfBirth } = req.body;
+    const { speciesId, tagNumber, rfidTag, sex, dateOfBirth, breed, weight } = req.body;
 
     const species = await Species.findByPk(speciesId);
     if (!species) {
@@ -125,11 +131,21 @@ export async function createAnimal(req: Request, res: Response) {
     });
 
     return res.status(StatusCodes.CREATED).json({
-      id: animal.get("id") as string,
-      publicId: animal.get("public_id"),
-      rfidTag: animal.get("rfid_tag"),
-      qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
+      animal: {
+        id: animal.get("id") as string,
+        publicId: animal.get("public_id"),
+        tagNumber: animal.get("tag_number"),
+        rfidTag: animal.get("rfid_tag"),
+        speciesId: animal.get("species_id"),
+        breed: animal.get("breed"),
+        weight: animal.get("weight"),
+        sex: animal.get("sex"),
+        dateOfBirth: animal.get("date_of_birth"),
+        status: animal.get("status"),
+        qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
+      },
     });
+
   } catch (err: any) {
     console.error("CREATE_ANIMAL_ERROR:", err);
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
@@ -289,16 +305,24 @@ export async function listAnimals(req: Request, res: Response) {
           id,
           publicId: animal.get("public_id"),
           qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
+
           tagNumber: animal.get("tag_number"),
           rfidTag: animal.get("rfid_tag"),
+
+          breed: animal.get("breed"),
+          weight: animal.get("weight"),
+
           sex: animal.get("sex"),
           status: animal.get("status"),
           healthStatus: healthMap.get(id) ?? "healthy",
+
           species: (animal as any).species,
+
           createdAt: animal.get("created_at"),
           updatedAt: animal.get("updated_at"),
         };
       }),
+
       pagination: { page, limit, total, totalPages },
     });
   } catch (err: any) {
@@ -349,20 +373,30 @@ export async function getAnimalById(req: Request, res: Response) {
 
     const healthStatus = rows[0]?.status ?? "healthy";
 
+    const publicId = animal.get("public_id") as string;
+
     return res.json({
       id: animal.get("id") as string,
-      publicId: animal.get("public_id"),
-      qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
+      publicId,
+      qrUrl: buildAnimalQrUrl(publicId),
+
       tagNumber: animal.get("tag_number"),
       rfidTag: animal.get("rfid_tag"),
+
+      breed: animal.get("breed"),
+      weight: animal.get("weight"),
+
       sex: animal.get("sex"),
       dateOfBirth: animal.get("date_of_birth"),
       status: animal.get("status"),
+
       healthStatus,
       species: (animal as any).species,
+
       createdAt: animal.get("created_at"),
       updatedAt: animal.get("updated_at"),
     });
+
   } catch (err: any) {
     console.error("GET_ANIMAL_ERROR:", err);
     return res
@@ -426,6 +460,8 @@ export async function updateAnimal(req: Request, res: Response) {
       rfidTag,
       sex,
       dateOfBirth,
+      breed,
+      weight,
       status,
       statusNotes,
     } = parsed.data as {
@@ -434,6 +470,8 @@ export async function updateAnimal(req: Request, res: Response) {
       rfidTag?: string | null;
       sex?: "male" | "female" | "unknown";
       dateOfBirth?: string | null;
+      breed?: string | null;
+      weight?: number | null;
       status?: StatusEnum;
       statusNotes?: string | null;
     };
@@ -490,16 +528,31 @@ export async function updateAnimal(req: Request, res: Response) {
     }
 
     const updates: any = {};
+
     if (speciesId !== undefined) updates.species_id = speciesId;
+
     if (tagNumber !== undefined) {
       updates.tag_number =
         tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
     }
+
     if (rfidTag !== undefined) {
       updates.rfid_tag = rfidTag === null ? null : String(rfidTag).trim();
     }
+
     if (sex !== undefined) updates.sex = sex;
-    if (dateOfBirth !== undefined) updates.date_of_birth = dateOfBirth;
+
+    if (dateOfBirth !== undefined) {
+      updates.date_of_birth = dateOfBirth;
+    }
+
+    if (breed !== undefined) {
+      updates.breed = breed === null ? null : String(breed).trim();
+    }
+
+    if (weight !== undefined) {
+      updates.weight = weight;
+    }
 
     const activityEvents: any[] = [];
 
@@ -551,6 +604,14 @@ export async function updateAnimal(req: Request, res: Response) {
         animal.get("date_of_birth"),
         updates.date_of_birth
       );
+    }
+
+    if (breed !== undefined) {
+      pushIfChanged("breed", animal.get("breed"), updates.breed);
+    }
+
+    if (weight !== undefined) {
+      pushIfChanged("weight", animal.get("weight"), updates.weight);
     }
 
     const currentStatus = animal.get("status") as StatusEnum;
@@ -638,12 +699,19 @@ export async function updateAnimal(req: Request, res: Response) {
       animal: {
         id: animal.get("id") as string,
         publicId: animal.get("public_id"),
+
         tagNumber: animal.get("tag_number"),
         rfidTag: animal.get("rfid_tag"),
+
+        breed: animal.get("breed"),
+        weight: animal.get("weight"),
+
         sex: animal.get("sex"),
         dateOfBirth: animal.get("date_of_birth"),
         status: animal.get("status"),
+
         speciesId: animal.get("species_id"),
+
         updatedAt: animal.get("updated_at"),
       },
     });

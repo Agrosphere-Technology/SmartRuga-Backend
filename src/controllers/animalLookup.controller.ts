@@ -14,6 +14,8 @@ function mapAnimalResponse(animal: any) {
         tagNumber: animal.get("tag_number"),
         rfidTag: animal.get("rfid_tag"),
         sex: animal.get("sex"),
+        breed: animal.get("breed"),
+        weight: animal.get("weight"),
         dateOfBirth: animal.get("date_of_birth"),
         status: animal.get("status"),
         species: animal.get("species")

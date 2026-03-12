@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { requireRanchAccess } from "../middlewares/ranchAccess";
-import { getAnimalTimeline } from "../controllers/animalTimeline.controller";
+import { getAnimalSummary, getAnimalTimeline } from "../controllers/animalTimeline.controller";
 
 const router = Router({ mergeParams: true });
 
@@ -11,5 +11,13 @@ router.get(
     requireRanchAccess("slug"),
     getAnimalTimeline
 );
+
+router.get(
+    "/:slug/animals/:animalId/summary",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    getAnimalSummary
+);
+
 
 export default router;

@@ -14,7 +14,7 @@ import ranchInviteRoutes from "./routes/ranchInvite.routes";
 import animalRoutes from "./routes/animal.routes";
 import animalHealthEventRoutes from "./routes/animalHealth.routes";
 import speciesRoutes from "./routes/species.routes";
-import animalTimelineRoutes from "./routes/animalTimeline.routes";
+import animalTimelineRoutes from "./routes/animalInsights.routes";
 import activityRoutes from "./routes/activity.routes";
 import ranchAlertRoutes from "./routes/ranchAlert.routes";
 import vaccinationRoutes from "./routes/vaccination.routes";

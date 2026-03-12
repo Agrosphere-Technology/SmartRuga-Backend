@@ -9,7 +9,8 @@ export const listAnimalsQuerySchema = z.object({
     status: z.enum(["active", "sold", "deceased"]).optional(),
     sex: z.enum(["male", "female", "unknown"]).optional(),
     healthStatus: z.enum(["healthy", "sick", "recovering", "quarantined"]).optional(),
-
+    breed: z.string().max(120).optional().nullable(),
+    weight: z.number().optional().nullable(),
     // search (tag)
     q: z.string().trim().min(1).max(100).optional(),
 
@@ -25,7 +26,9 @@ export const updateAnimalSchema = z
         tagNumber: z.string().min(1).max(100).nullable().optional(),
         sex: z.enum(["male", "female", "unknown"]).optional(),
         rfidTag: z.string().min(1).max(100).nullable().optional(),
-        dateOfBirth: z.string().date().nullable().optional(), // "YYYY-MM-DD"
+        dateOfBirth: z.string().date().nullable().optional(), // "YYYY-MM-DD",
+        breed: z.string().max(120).optional().nullable(),
+        weight: z.number().optional().nullable(),
         status: z.enum(["active", "sold", "deceased"]).optional(),
         statusNotes: z.string().max(1000).optional().nullable(),
     })

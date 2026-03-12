@@ -46,6 +46,16 @@ export function AnimalFactory(sequelize: Sequelize) {
         unique: true,
       },
 
+      breed: {
+        type: DataTypes.STRING(120),
+        allowNull: true,
+      },
+
+      weight: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+      },
+
       sex: {
         type: DataTypes.ENUM("male", "female", "unknown"),
         allowNull: false,
