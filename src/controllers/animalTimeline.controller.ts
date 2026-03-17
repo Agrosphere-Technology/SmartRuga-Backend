@@ -22,6 +22,7 @@ type TimelineRow = {
     recorded_by_email: string | null;
     recorded_by_first_name: string | null;
     recorded_by_last_name: string | null;
+    recorded_by_role: string | null;
     created_at: Date;
 };
 
@@ -146,9 +147,13 @@ export async function getAnimalTimeline(req: Request, res: Response) {
                     u.email AS recorded_by_email,
                     u.first_name AS recorded_by_first_name,
                     u.last_name AS recorded_by_last_name,
+                    rm.role::text AS recorded_by_role,
                     e.created_at
                 FROM animal_health_events e
                 JOIN users u ON u.id = e.recorded_by
+                LEFT JOIN ranch_members rm
+                    ON rm.user_id = e.recorded_by
+                   AND rm.ranch_id = $2
                 WHERE e.animal_id = $1
 
                 UNION ALL
@@ -172,9 +177,13 @@ export async function getAnimalTimeline(req: Request, res: Response) {
                     u.email AS recorded_by_email,
                     u.first_name AS recorded_by_first_name,
                     u.last_name AS recorded_by_last_name,
+                    rm.role::text AS recorded_by_role,
                     a.created_at
                 FROM animal_activity_events a
                 JOIN users u ON u.id = a.recorded_by
+                LEFT JOIN ranch_members rm
+                    ON rm.user_id = a.recorded_by
+                   AND rm.ranch_id = $2
                 WHERE a.animal_id = $1
 
                 UNION ALL
@@ -198,9 +207,13 @@ export async function getAnimalTimeline(req: Request, res: Response) {
                     u.email AS recorded_by_email,
                     u.first_name AS recorded_by_first_name,
                     u.last_name AS recorded_by_last_name,
+                    rm.role::text AS recorded_by_role,
                     m.created_at
                 FROM animal_movement_events m
                 JOIN users u ON u.id = m.recorded_by
+                LEFT JOIN ranch_members rm
+                    ON rm.user_id = m.recorded_by
+                   AND rm.ranch_id = $2
                 LEFT JOIN ranch_locations fl ON fl.id = m.from_location_id
                 LEFT JOIN ranch_locations tl ON tl.id = m.to_location_id
                 WHERE m.animal_id = $1
@@ -226,16 +239,20 @@ export async function getAnimalTimeline(req: Request, res: Response) {
                     u.email AS recorded_by_email,
                     u.first_name AS recorded_by_first_name,
                     u.last_name AS recorded_by_last_name,
+                    rm.role::text AS recorded_by_role,
                     v.created_at
                 FROM animal_vaccinations v
                 LEFT JOIN users u ON u.id = v.administered_by
+                LEFT JOIN ranch_members rm
+                    ON rm.user_id = v.administered_by
+                   AND rm.ranch_id = $2
                 WHERE v.animal_id = $1
             ) t
-            ORDER BY created_at DESC
-            LIMIT $2 OFFSET $3
+            ORDER BY created_at DESC, id DESC
+            LIMIT $3 OFFSET $4
             `,
             {
-                bind: [animalId, limit, offset],
+                bind: [animalId, ranchId, limit, offset],
                 type: QueryTypes.SELECT,
             }
         );
@@ -267,6 +284,7 @@ export async function getAnimalTimeline(req: Request, res: Response) {
                                 email: r.recorded_by_email,
                                 firstName: r.recorded_by_first_name,
                                 lastName: r.recorded_by_last_name,
+                                role: r.recorded_by_role,
                             }
                             : null,
                     }
@@ -282,6 +300,7 @@ export async function getAnimalTimeline(req: Request, res: Response) {
                                     email: r.recorded_by_email,
                                     firstName: r.recorded_by_first_name,
                                     lastName: r.recorded_by_last_name,
+                                    role: r.recorded_by_role,
                                 }
                                 : null,
                         }
@@ -297,6 +316,7 @@ export async function getAnimalTimeline(req: Request, res: Response) {
                                         email: r.recorded_by_email,
                                         firstName: r.recorded_by_first_name,
                                         lastName: r.recorded_by_last_name,
+                                        role: r.recorded_by_role,
                                     }
                                     : null,
                             }
@@ -312,6 +332,7 @@ export async function getAnimalTimeline(req: Request, res: Response) {
                                         email: r.recorded_by_email,
                                         firstName: r.recorded_by_first_name,
                                         lastName: r.recorded_by_last_name,
+                                        role: r.recorded_by_role,
                                     }
                                     : null,
                             }),
@@ -325,7 +346,6 @@ export async function getAnimalTimeline(req: Request, res: Response) {
         });
     }
 }
-
 
 export async function getAnimalSummary(req: Request, res: Response) {
     try {

@@ -1,10 +1,9 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 
-import { User } from "../models";
+import { User, RanchMember, Ranch } from "../models";
 import { updateMeSchema } from "../validators/profile.validator";
 import { profileMissingFields } from "../helpers/user.helpers";
-
 
 export async function getMyProfile(req: Request, res: Response) {
   try {
@@ -12,8 +11,22 @@ export async function getMyProfile(req: Request, res: Response) {
 
     const user = await User.findByPk(userId);
     if (!user) {
-      return res.status(StatusCodes.NOT_FOUND).json({ message: "User not found" });
+      return res.status(StatusCodes.NOT_FOUND).json({
+        message: "User not found",
+      });
     }
+
+    const memberships = await RanchMember.findAll({
+      where: { user_id: userId },
+      include: [
+        {
+          model: Ranch,
+          as: "ranch", // use your real alias here
+          attributes: ["id", "name", "slug"],
+        },
+      ],
+      attributes: ["id", "role", "ranch_id"],
+    } as any);
 
     const missingFields = profileMissingFields(user);
 
@@ -27,6 +40,12 @@ export async function getMyProfile(req: Request, res: Response) {
         is_active: user.get("is_active"),
         createdAt: user.get("created_at"),
       },
+      memberships: memberships.map((membership: any) => ({
+        ranchId: membership.get("ranch_id"),
+        ranchName: membership.ranch?.get("name") ?? null,
+        ranchSlug: membership.ranch?.get("slug") ?? null,
+        role: membership.get("role"),
+      })),
       profileComplete: missingFields.length === 0,
       missingFields,
     });
@@ -53,10 +72,11 @@ export async function updateMe(req: Request, res: Response) {
 
     const user = await User.findByPk(userId);
     if (!user) {
-      return res.status(StatusCodes.NOT_FOUND).json({ message: "User not found" });
+      return res.status(StatusCodes.NOT_FOUND).json({
+        message: "User not found",
+      });
     }
 
-    // Only allow updating these fields
     const { first_name, last_name, phone } = parsed.data;
 
     await user.update({
@@ -64,6 +84,18 @@ export async function updateMe(req: Request, res: Response) {
       ...(last_name !== undefined ? { last_name } : {}),
       ...(phone !== undefined ? { phone } : {}),
     });
+
+    const memberships = await RanchMember.findAll({
+      where: { user_id: userId },
+      include: [
+        {
+          model: Ranch,
+          as: "ranch", // use your real alias here
+          attributes: ["id", "name", "slug"],
+        },
+      ],
+      attributes: ["id", "role", "ranch_id"],
+    } as any);
 
     const missingFields = profileMissingFields(user);
 
@@ -76,7 +108,14 @@ export async function updateMe(req: Request, res: Response) {
         phone: user.get("phone"),
         platform_role: user.get("platform_role"),
         is_active: user.get("is_active"),
+        createdAt: user.get("created_at"),
       },
+      memberships: memberships.map((membership: any) => ({
+        ranchId: membership.get("ranch_id"),
+        ranchName: membership.ranch?.get("name") ?? null,
+        ranchSlug: membership.ranch?.get("slug") ?? null,
+        role: membership.get("role"),
+      })),
       profileComplete: missingFields.length === 0,
       missingFields,
     });

@@ -13,7 +13,7 @@ const router = Router();
  * @openapi
  * tags:
  *   - name: Vaccinations
- *     description: Animal vaccination records and schedules
+ *     description: Animal vaccination records and vaccination alerts
  */
 
 /**
@@ -79,7 +79,7 @@ const router = Router();
  *           items:
  *             $ref: '#/components/schemas/Vaccination'
  *
- *     OverdueVaccinationItem:
+ *     VaccinationAlertItem:
  *       type: object
  *       properties:
  *         publicId:
@@ -89,26 +89,77 @@ const router = Router();
  *         animalPublicId:
  *           type: string
  *           format: uuid
+ *           nullable: true
  *           description: Animal public_id
  *         animalTagNumber:
  *           type: string
  *           nullable: true
  *         animalStatus:
  *           type: string
+ *           nullable: true
  *           enum: [active, sold, deceased]
+ *         animalBreed:
+ *           type: string
+ *           nullable: true
+ *         animalSex:
+ *           type: string
+ *           nullable: true
  *         vaccineName:
  *           type: string
+ *         dose:
+ *           type: string
+ *           nullable: true
+ *         administeredAt:
+ *           type: string
+ *           format: date-time
+ *           nullable: true
  *         nextDueAt:
  *           type: string
  *           format: date-time
+ *         notes:
+ *           type: string
+ *           nullable: true
+ *         alertStatus:
+ *           type: string
+ *           enum: [overdue, due_today, due_soon]
+ *         daysOverdue:
+ *           type: integer
+ *           nullable: true
+ *         daysUntilDue:
+ *           type: integer
+ *           nullable: true
  *
- *     ListOverdueVaccinationsResponse:
+ *     VaccinationAlertsSummary:
  *       type: object
  *       properties:
+ *         overdueCount:
+ *           type: integer
+ *         dueTodayCount:
+ *           type: integer
+ *         dueSoonCount:
+ *           type: integer
+ *         totalAlerts:
+ *           type: integer
+ *         dueSoonWindowDays:
+ *           type: integer
+ *
+ *     ListVaccinationAlertsResponse:
+ *       type: object
+ *       properties:
+ *         summary:
+ *           $ref: '#/components/schemas/VaccinationAlertsSummary'
  *         overdue:
  *           type: array
  *           items:
- *             $ref: '#/components/schemas/OverdueVaccinationItem'
+ *             $ref: '#/components/schemas/VaccinationAlertItem'
+ *         dueToday:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/VaccinationAlertItem'
+ *         dueSoon:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/VaccinationAlertItem'
  */
 
 /**
@@ -152,8 +203,6 @@ const router = Router();
  *       404:
  *         description: Animal not found
  */
-
-// Create Animal Vaccination.
 router.post(
     "/:slug/animals/:publicId/vaccinations",
     requireAuth(),
@@ -194,8 +243,6 @@ router.post(
  *       404:
  *         description: Animal not found
  */
-
-// List Animal Vaccinations
 router.get(
     "/:slug/animals/:publicId/vaccinations",
     requireAuth(),
@@ -207,7 +254,7 @@ router.get(
  * @openapi
  * /api/v1/ranches/{slug}/vaccinations/overdue:
  *   get:
- *     summary: List overdue vaccinations for a ranch
+ *     summary: List ranch vaccination alerts including overdue, due today, and due soon vaccinations
  *     tags: [Vaccinations]
  *     security:
  *       - bearerAuth: []
@@ -218,20 +265,25 @@ router.get(
  *         schema:
  *           type: string
  *         description: Ranch slug (public identifier)
+ *       - in: query
+ *         name: dueSoonDays
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 7
+ *         description: Number of days ahead to consider vaccinations as due soon
  *     responses:
  *       200:
- *         description: Overdue vaccinations list
+ *         description: Vaccination alerts returned successfully
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ListOverdueVaccinationsResponse'
+ *               $ref: '#/components/schemas/ListVaccinationAlertsResponse'
  *       401:
  *         description: Unauthorized
  */
-
-// List Over due Vaccinations
 router.get(
-    "/:slug/vaccinations/overdue",
+    "/:slug/vaccinations/alerts",
     requireAuth(),
     requireRanchAccess("slug"),
     listOverdueVaccinations
