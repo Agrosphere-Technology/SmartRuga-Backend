@@ -3,8 +3,11 @@ import { requireAuth } from "../middlewares/auth";
 import { requireRanchAccess } from "../middlewares/ranchAccess";
 import {
     createAnimalVaccination,
+    deleteAnimalVaccination,
+    getAnimalVaccination,
     listAnimalVaccinations,
-    listOverdueVaccinations,
+    listVaccinationAlerts,
+    updateAnimalVaccination,
 } from "../controllers/vaccination.controller";
 
 const router = Router();
@@ -85,12 +88,10 @@ const router = Router();
  *         publicId:
  *           type: string
  *           format: uuid
- *           description: Vaccination public_id
  *         animalPublicId:
  *           type: string
  *           format: uuid
  *           nullable: true
- *           description: Animal public_id
  *         animalTagNumber:
  *           type: string
  *           nullable: true
@@ -176,13 +177,11 @@ const router = Router();
  *         required: true
  *         schema:
  *           type: string
- *         description: Ranch slug (public identifier)
  *       - in: path
  *         name: publicId
  *         required: true
  *         schema:
  *           type: string
- *         description: Animal public_id (QR identity)
  *     requestBody:
  *       required: true
  *       content:
@@ -224,13 +223,11 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
- *         description: Ranch slug (public identifier)
  *       - in: path
  *         name: publicId
  *         required: true
  *         schema:
  *           type: string
- *         description: Animal public_id (QR identity)
  *     responses:
  *       200:
  *         description: Vaccinations list
@@ -252,7 +249,7 @@ router.get(
 
 /**
  * @openapi
- * /api/v1/ranches/{slug}/vaccinations/overdue:
+ * /api/v1/ranches/{slug}/vaccinations/alerts:
  *   get:
  *     summary: List ranch vaccination alerts including overdue, due today, and due soon vaccinations
  *     tags: [Vaccinations]
@@ -264,7 +261,6 @@ router.get(
  *         required: true
  *         schema:
  *           type: string
- *         description: Ranch slug (public identifier)
  *       - in: query
  *         name: dueSoonDays
  *         required: false
@@ -286,7 +282,159 @@ router.get(
     "/:slug/vaccinations/alerts",
     requireAuth(),
     requireRanchAccess("slug"),
-    listOverdueVaccinations
+    listVaccinationAlerts
+);
+
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals/{publicId}/vaccinations/{vaccinationPublicId}:
+ *   patch:
+ *     summary: Update a vaccination record
+ *     tags: [Vaccinations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: publicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: vaccinationPublicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateVaccinationRequest'
+ *     responses:
+ *       200:
+ *         description: Vaccination updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CreateVaccinationResponse'
+ *       400:
+ *         description: Invalid payload
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Animal or vaccination not found
+ */
+
+router.patch(
+    "/:slug/animals/:publicId/vaccinations/:vaccinationPublicId",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    updateAnimalVaccination
+);
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals/{publicId}/vaccinations/{vaccinationPublicId}:
+ *   get:
+ *     summary: Get a single vaccination record
+ *     tags: [Vaccinations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: publicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: vaccinationPublicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Vaccination fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CreateVaccinationResponse'
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Animal or vaccination not found
+ */
+
+router.get(
+    "/:slug/animals/:publicId/vaccinations/:vaccinationPublicId",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    getAnimalVaccination
+);
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals/{publicId}/vaccinations/{vaccinationPublicId}:
+ *   delete:
+ *     summary: Archive a vaccination record
+ *     tags: [Vaccinations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: publicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: vaccinationPublicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: Wrong entry
+ *     responses:
+ *       200:
+ *         description: Vaccination archived successfully
+ *       400:
+ *         description: Invalid payload
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Animal or vaccination not found
+ */
+
+
+router.delete(
+    "/:slug/animals/:publicId/vaccinations/:vaccinationPublicId",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    deleteAnimalVaccination
 );
 
 export default router;

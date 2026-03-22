@@ -1,8 +1,12 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
-import { Animal, Vaccination } from "../models";
-import { createVaccinationSchema } from "../validators/vaccination.validator";
 import { Op } from "sequelize";
+import { Animal, Vaccination } from "../models";
+import {
+    createVaccinationSchema,
+    deleteVaccinationSchema,
+    updateVaccinationSchema,
+} from "../validators/vaccination.validator";
 
 function startOfDay(date: Date) {
     const d = new Date(date);
@@ -27,7 +31,6 @@ function diffInDays(from: Date, to: Date) {
     return Math.floor((startOfDay(to).getTime() - startOfDay(from).getTime()) / msPerDay);
 }
 
-
 export async function createAnimalVaccination(req: Request, res: Response) {
     try {
         const parsed = createVaccinationSchema.safeParse(req.body);
@@ -47,7 +50,9 @@ export async function createAnimalVaccination(req: Request, res: Response) {
         } as any);
 
         if (!animal) {
-            return res.status(StatusCodes.NOT_FOUND).json({ message: "Animal not found" });
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Animal not found",
+            });
         }
 
         const v = parsed.data;
@@ -62,6 +67,11 @@ export async function createAnimalVaccination(req: Request, res: Response) {
             administered_by: userId,
             notes: v.notes ?? null,
             created_at: new Date(),
+            updated_at: null,
+            updated_by: null,
+            deleted_at: null,
+            deleted_by: null,
+            delete_reason: null,
         } as any);
 
         return res.status(StatusCodes.CREATED).json({
@@ -93,11 +103,17 @@ export async function listAnimalVaccinations(req: Request, res: Response) {
         } as any);
 
         if (!animal) {
-            return res.status(StatusCodes.NOT_FOUND).json({ message: "Animal not found" });
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Animal not found",
+            });
         }
 
         const rows = await Vaccination.findAll({
-            where: { ranch_id: ranchId, animal_id: animal.get("id") },
+            where: {
+                ranch_id: ranchId,
+                animal_id: animal.get("id"),
+                deleted_at: null,
+            },
             order: [["administered_at", "DESC"]],
         } as any);
 
@@ -120,11 +136,58 @@ export async function listAnimalVaccinations(req: Request, res: Response) {
     }
 }
 
-// List overdue and due-soon vaccinations for a ranch
-export async function listOverdueVaccinations(req: Request, res: Response) {
+export async function getAnimalVaccination(req: Request, res: Response) {
     try {
         const ranchId = req.ranch!.id;
+        const { publicId, vaccinationPublicId } = req.params;
 
+        const animal = await Animal.findOne({
+            where: { public_id: publicId, ranch_id: ranchId },
+        } as any);
+
+        if (!animal) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Animal not found",
+            });
+        }
+
+        const vaccination = await Vaccination.findOne({
+            where: {
+                public_id: vaccinationPublicId,
+                animal_id: animal.get("id"),
+                ranch_id: ranchId,
+                deleted_at: null,
+            },
+        } as any);
+
+        if (!vaccination) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Vaccination not found",
+            });
+        }
+
+        return res.status(StatusCodes.OK).json({
+            vaccination: {
+                publicId: vaccination.get("public_id"),
+                vaccineName: vaccination.get("vaccine_name"),
+                dose: vaccination.get("dose"),
+                administeredAt: vaccination.get("administered_at"),
+                nextDueAt: vaccination.get("next_due_at"),
+                notes: vaccination.get("notes"),
+            },
+        });
+    } catch (err: any) {
+        console.error("GET_VACCINATION_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to fetch vaccination",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}
+
+export async function listVaccinationAlerts(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
         const dueSoonDays = Math.max(1, Number(req.query.dueSoonDays ?? 7));
 
         const now = new Date();
@@ -135,6 +198,7 @@ export async function listOverdueVaccinations(req: Request, res: Response) {
         const rows = await Vaccination.findAll({
             where: {
                 ranch_id: ranchId,
+                deleted_at: null,
                 next_due_at: {
                     [Op.ne]: null,
                     [Op.lte]: dueSoonEnd,
@@ -211,9 +275,158 @@ export async function listOverdueVaccinations(req: Request, res: Response) {
             dueSoon,
         });
     } catch (err: any) {
-        console.error("LIST_OVERDUE_VACCINATIONS_ERROR:", err);
+        console.error("LIST_VACCINATION_ALERTS_ERROR:", err);
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             message: "Failed to list vaccination alerts",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}
+
+export async function updateAnimalVaccination(req: Request, res: Response) {
+    try {
+        const parsed = updateVaccinationSchema.safeParse(req.body);
+
+        if (!parsed.success) {
+            return res.status(StatusCodes.BAD_REQUEST).json({
+                message: "Invalid payload",
+                issues: parsed.error.issues,
+            });
+        }
+
+        const ranchId = req.ranch!.id;
+        const userId = req.user!.id;
+        const { publicId, vaccinationPublicId } = req.params;
+
+        const animal = await Animal.findOne({
+            where: { public_id: publicId, ranch_id: ranchId },
+        } as any);
+
+        if (!animal) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Animal not found",
+            });
+        }
+
+        const vaccination = await Vaccination.findOne({
+            where: {
+                public_id: vaccinationPublicId,
+                animal_id: animal.get("id"),
+                ranch_id: ranchId,
+                deleted_at: null,
+            },
+        } as any);
+
+        if (!vaccination) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Vaccination not found",
+            });
+        }
+
+        const data = parsed.data;
+
+        await vaccination.update({
+            ...(data.vaccineName !== undefined && {
+                vaccine_name: data.vaccineName,
+            }),
+            ...(data.dose !== undefined && {
+                dose: data.dose,
+            }),
+            ...(data.administeredAt !== undefined && {
+                administered_at: new Date(data.administeredAt),
+            }),
+            ...(data.nextDueAt !== undefined && {
+                next_due_at: data.nextDueAt ? new Date(data.nextDueAt) : null,
+            }),
+            ...(data.notes !== undefined && {
+                notes: data.notes,
+            }),
+            updated_at: new Date(),
+            updated_by: userId,
+        });
+
+        return res.status(StatusCodes.OK).json({
+            message: "Vaccination updated successfully",
+            vaccination: {
+                publicId: vaccination.get("public_id"),
+                vaccineName: vaccination.get("vaccine_name"),
+                dose: vaccination.get("dose"),
+                administeredAt: vaccination.get("administered_at"),
+                nextDueAt: vaccination.get("next_due_at"),
+                notes: vaccination.get("notes"),
+            },
+        });
+    } catch (err: any) {
+        console.error("UPDATE_VACCINATION_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to update vaccination",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}
+
+export async function deleteAnimalVaccination(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+        const userId = req.user!.id;
+        const { publicId, vaccinationPublicId } = req.params;
+
+        const role = req.membership?.ranchRole;
+
+        if (!role || !["owner", "manager", "vet"].includes(role)) {
+            return res.status(StatusCodes.FORBIDDEN).json({
+                message: "Not allowed to delete vaccination",
+            });
+        }
+
+        const parsed = deleteVaccinationSchema.safeParse(req.body ?? {});
+        if (!parsed.success) {
+            return res.status(StatusCodes.BAD_REQUEST).json({
+                message: "Invalid payload",
+                issues: parsed.error.issues,
+            });
+        }
+
+        const animal = await Animal.findOne({
+            where: { public_id: publicId, ranch_id: ranchId },
+        } as any);
+
+        if (!animal) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Animal not found",
+            });
+        }
+
+        const vaccination = await Vaccination.findOne({
+            where: {
+                public_id: vaccinationPublicId,
+                animal_id: animal.get("id"),
+                ranch_id: ranchId,
+                deleted_at: null,
+            },
+        } as any);
+
+        if (!vaccination) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Vaccination not found",
+            });
+        }
+
+        await vaccination.update({
+            deleted_at: new Date(),
+            deleted_by: userId,
+            delete_reason: parsed.data.reason ?? null,
+            updated_at: new Date(),
+            updated_by: userId,
+        });
+
+        return res.status(StatusCodes.OK).json({
+            message: "Vaccination archived successfully",
+        });
+    } catch (err: any) {
+        console.error("DELETE_VACCINATION_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to delete vaccination",
             error: err?.message ?? "Unknown error",
         });
     }

@@ -23,7 +23,14 @@ export function AnimalVaccinationFactory(sequelize: Sequelize) {
             next_due_at: { type: DataTypes.DATE, allowNull: true },
             administered_by: { type: DataTypes.UUID, allowNull: true },
             notes: { type: DataTypes.TEXT, allowNull: true },
+
             created_at: { type: DataTypes.DATE, allowNull: false },
+            updated_at: { type: DataTypes.DATE, allowNull: true },
+            updated_by: { type: DataTypes.UUID, allowNull: true },
+
+            deleted_at: { type: DataTypes.DATE, allowNull: true },
+            deleted_by: { type: DataTypes.UUID, allowNull: true },
+            delete_reason: { type: DataTypes.TEXT, allowNull: true },
         },
         {
             tableName: "animal_vaccinations",
