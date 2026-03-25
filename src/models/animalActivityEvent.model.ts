@@ -35,6 +35,12 @@ export function AnimalActivityEventFactory(sequelize: Sequelize) {
                 type: DataTypes.TEXT,
                 allowNull: true,
             },
+            public_id: {
+                type: DataTypes.UUID,
+                allowNull: false,
+                unique: true,
+                defaultValue: DataTypes.UUIDV4,
+            },
             notes: {
                 type: DataTypes.TEXT,
                 allowNull: true,

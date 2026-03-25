@@ -2,52 +2,121 @@ import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { QueryTypes, Op } from "sequelize";
 import { Vaccination, sequelize } from "../models";
+import {
+    addDays,
+    AnimalStatsRow,
+    DashboardActivityItem,
+    endOfDay,
+    RecentActivityRow,
+    startOfDay,
+} from "../helpers/dashboard.helpers";
 
-type AnimalStatsRow = {
-    total: string;
-    active: string;
-    sold: string;
-    deceased: string;
-    sick: string;
-};
+function buildDashboardActivity(items: RecentActivityRow[]): DashboardActivityItem[] {
+    const mapped = items.map((item) => {
+        let title = "Activity recorded";
+        let description = `Activity recorded for animal ${item.animal_tag_number ?? item.animal_public_id}`;
 
-type RecentActivityRow = {
-    type: "health" | "animal_update" | "movement" | "vaccination";
-    id: string;
-    created_at: Date;
-    animal_public_id: string;
-    animal_tag_number: string | null;
-    status: string | null;
-    field: string | null;
-    from_value: string | null;
-    to_value: string | null;
-    movement_type: string | null;
-    vaccine_name: string | null;
-};
+        if (item.type === "health") {
+            title = "Health status updated";
+            description = `Animal ${item.animal_tag_number ?? item.animal_public_id} marked as ${item.status}`;
+        } else if (item.type === "animal_update") {
+            title = "Animal record updated";
+            description = `${item.field} changed from ${item.from_value ?? "-"} to ${item.to_value ?? "-"}`;
+        } else if (item.type === "movement") {
+            title = "Animal moved";
+            description = `Movement type: ${item.movement_type}`;
+        } else if (item.type === "vaccination") {
+            title = "Vaccination recorded";
+            description = `${item.vaccine_name} recorded for animal ${item.animal_tag_number ?? item.animal_public_id}`;
+        }
 
-function startOfDay(date: Date) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    return d;
-}
+        return {
+            type: item.type,
+            id: item.id,
+            createdAt: item.created_at,
+            animalPublicId: item.animal_public_id,
+            animalTagNumber: item.animal_tag_number,
+            title,
+            description,
+            field: item.field,
+            from_value: item.from_value,
+            to_value: item.to_value,
+        };
+    });
 
-function endOfDay(date: Date) {
-    const d = new Date(date);
-    d.setHours(23, 59, 59, 999);
-    return d;
-}
+    const grouped: DashboardActivityItem[] = [];
+    const groupedUpdates = new Map<
+        string,
+        {
+            createdAt: Date;
+            animalPublicId: string;
+            animalTagNumber: string | null;
+            changes: Array<{ field: string | null; from: string | null; to: string | null }>;
+        }
+    >();
 
-function addDays(date: Date, days: number) {
-    const d = new Date(date);
-    d.setDate(d.getDate() + days);
-    return d;
+    for (const item of mapped) {
+        if (item.type !== "animal_update") {
+            grouped.push({
+                type: item.type,
+                id: item.id,
+                createdAt: item.createdAt,
+                animalPublicId: item.animalPublicId,
+                animalTagNumber: item.animalTagNumber,
+                title: item.title,
+                description: item.description,
+            });
+            continue;
+        }
+
+        const key = `${item.animalPublicId}::${new Date(item.createdAt).toISOString()}`;
+
+        if (!groupedUpdates.has(key)) {
+            groupedUpdates.set(key, {
+                createdAt: item.createdAt,
+                animalPublicId: item.animalPublicId,
+                animalTagNumber: item.animalTagNumber,
+                changes: [],
+            });
+        }
+
+        groupedUpdates.get(key)!.changes.push({
+            field: item.field ?? null,
+            from: item.from_value ?? null,
+            to: item.to_value ?? null,
+        });
+    }
+
+    for (const [key, value] of groupedUpdates.entries()) {
+        grouped.push({
+            type: "animal_update",
+            id: key,
+            createdAt: value.createdAt,
+            animalPublicId: value.animalPublicId,
+            animalTagNumber: value.animalTagNumber,
+            title: "Animal record updated",
+            description: `${value.changes.length} field${value.changes.length > 1 ? "s" : ""} updated`,
+            changes: value.changes,
+        });
+    }
+
+    grouped.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    return grouped.slice(0, 10);
 }
 
 export async function getRanchDashboard(req: Request, res: Response) {
     try {
         const ranchId = req.ranch!.id;
         const ranchRole = req.membership?.ranchRole ?? null;
-        const dueSoonDays = 7;
+
+        const parsedDueSoonDays = Number(req.query.dueSoonDays);
+        const dueSoonDays =
+            Number.isFinite(parsedDueSoonDays) && parsedDueSoonDays > 0
+                ? parsedDueSoonDays
+                : 7;
 
         const now = new Date();
         const todayStart = startOfDay(now);
@@ -108,13 +177,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
             }
         }
 
-        const recentActivity = await sequelize.query<RecentActivityRow>(
+        const recentActivityRows = await sequelize.query<RecentActivityRow>(
             `
             SELECT *
             FROM (
                 SELECT
                     'health'::text AS type,
-                    e.id,
+                    e.public_id AS id,
                     e.created_at,
                     a.public_id AS animal_public_id,
                     a.tag_number AS animal_tag_number,
@@ -132,7 +201,7 @@ export async function getRanchDashboard(req: Request, res: Response) {
 
                 SELECT
                     'animal_update'::text AS type,
-                    ev.id,
+                    ev.public_id AS id,
                     ev.created_at,
                     a.public_id AS animal_public_id,
                     a.tag_number AS animal_tag_number,
@@ -150,7 +219,7 @@ export async function getRanchDashboard(req: Request, res: Response) {
 
                 SELECT
                     'movement'::text AS type,
-                    m.id,
+                    m.public_id AS id,
                     m.created_at,
                     a.public_id AS animal_public_id,
                     a.tag_number AS animal_tag_number,
@@ -168,7 +237,7 @@ export async function getRanchDashboard(req: Request, res: Response) {
 
                 SELECT
                     'vaccination'::text AS type,
-                    v.id,
+                    v.public_id AS id,
                     v.created_at,
                     a.public_id AS animal_public_id,
                     a.tag_number AS animal_tag_number,
@@ -183,14 +252,16 @@ export async function getRanchDashboard(req: Request, res: Response) {
                 WHERE a.ranch_id = $1
                   AND v.deleted_at IS NULL
             ) t
-            ORDER BY created_at DESC, id DESC
-            LIMIT 10
+            ORDER BY created_at DESC
+            LIMIT 20
             `,
             {
                 bind: [ranchId],
                 type: QueryTypes.SELECT,
             }
         );
+
+        const recentActivity = buildDashboardActivity(recentActivityRows);
 
         return res.status(StatusCodes.OK).json({
             role: ranchRole,
@@ -207,34 +278,7 @@ export async function getRanchDashboard(req: Request, res: Response) {
                 dueSoon,
                 dueSoonWindowDays: dueSoonDays,
             },
-            recentActivity: recentActivity.map((item) => {
-                let title = "Activity recorded";
-                let description = `Activity recorded for animal ${item.animal_tag_number ?? item.animal_public_id}`;
-
-                if (item.type === "health") {
-                    title = "Health status updated";
-                    description = `Animal ${item.animal_tag_number ?? item.animal_public_id} marked as ${item.status}`;
-                } else if (item.type === "animal_update") {
-                    title = "Animal record updated";
-                    description = `${item.field} changed from ${item.from_value ?? "-"} to ${item.to_value ?? "-"}`;
-                } else if (item.type === "movement") {
-                    title = "Animal moved";
-                    description = `Movement type: ${item.movement_type}`;
-                } else if (item.type === "vaccination") {
-                    title = "Vaccination recorded";
-                    description = `${item.vaccine_name} recorded for animal ${item.animal_tag_number ?? item.animal_public_id}`;
-                }
-
-                return {
-                    type: item.type,
-                    id: item.id,
-                    createdAt: item.created_at,
-                    animalPublicId: item.animal_public_id,
-                    animalTagNumber: item.animal_tag_number,
-                    title,
-                    description,
-                };
-            }),
+            recentActivity,
         });
     } catch (err: any) {
         console.error("GET_RANCH_DASHBOARD_ERROR:", err);
@@ -244,5 +288,3 @@ export async function getRanchDashboard(req: Request, res: Response) {
         });
     }
 }
-
-

@@ -52,6 +52,13 @@ export function AnimalMovementEventFactory(sequelize: Sequelize) {
                 allowNull: false,
             },
 
+            public_id: {
+                type: DataTypes.UUID,
+                allowNull: false,
+                unique: true,
+                defaultValue: DataTypes.UUIDV4,
+            },
+
             created_at: {
                 type: DataTypes.DATE,
                 allowNull: false,

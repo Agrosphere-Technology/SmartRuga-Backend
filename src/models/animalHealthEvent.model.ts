@@ -20,6 +20,12 @@ export function AnimalHealthEventFactory(sequelize: Sequelize) {
                 ),
                 allowNull: false,
             },
+            public_id: {
+                type: DataTypes.UUID,
+                allowNull: false,
+                unique: true,
+                defaultValue: DataTypes.UUIDV4,
+            },
             notes: { type: DataTypes.TEXT, allowNull: true },
             recorded_by: { type: DataTypes.UUID, allowNull: false },
         },
