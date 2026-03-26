@@ -53,6 +53,21 @@ export function TaskFactory(sequelize: Sequelize) {
                 type: DataTypes.DATE,
                 allowNull: true,
             },
+
+            cancelled_at: {
+                type: DataTypes.DATE,
+                allowNull: true,
+            },
+
+            cancelled_by_user_id: {
+                type: DataTypes.UUID,
+                allowNull: true,
+            },
+
+            cancel_reason: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+            },
         },
         {
             tableName: "tasks",

@@ -25,3 +25,7 @@ export const createTaskSchema = z.object({
 export const updateTaskStatusSchema = z.object({
     status: z.enum(["pending", "in_progress", "completed"]),
 });
+
+export const cancelTaskSchema = z.object({
+    reason: z.string().trim().min(1).max(1000)
+});

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { createTaskSchema, updateTaskStatusSchema } from "../validators/task.validator";
 import { RanchMember, Task, User } from "../models";
+import { cancelTaskSchema } from "../validators/task.validator";
 
 function buildUserName(user: any) {
     return [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
@@ -92,7 +93,10 @@ export async function listTasks(req: Request, res: Response) {
         const ranchRole = req.membership!.ranchRole;
         const currentUserId = req.user!.id;
 
-        const where: any = { ranch_id: ranchId };
+        const where: any = {
+            ranch_id: ranchId,
+            cancelled_at: null,
+        };
 
         if (!["owner", "manager"].includes(ranchRole)) {
             where.assigned_to_user_id = currentUserId;
@@ -176,6 +180,12 @@ export async function updateTaskStatus(req: Request, res: Response) {
             });
         }
 
+        if (task.getDataValue("cancelled_at")) {
+            return res.status(StatusCodes.BAD_REQUEST).json({
+                message: "Cancelled tasks cannot be updated",
+            });
+        }
+
         const isAssignee = task.getDataValue("assigned_to_user_id") === currentUserId;
         const canManage = ["owner", "manager"].includes(ranchRole);
 
@@ -216,6 +226,76 @@ export async function updateTaskStatus(req: Request, res: Response) {
         console.error("UPDATE_TASK_STATUS_ERROR:", err);
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             message: "Failed to update task status",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}
+
+export async function cancelTask(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+        const currentUserId = req.user!.id;
+        const ranchRole = req.membership!.ranchRole;
+        const { taskPublicId } = req.params;
+
+        if (!["owner", "manager"].includes(ranchRole)) {
+            return res.status(StatusCodes.FORBIDDEN).json({
+                message: "Only ranch owners or managers can cancel tasks",
+            });
+        }
+
+        const parsed = cancelTaskSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(StatusCodes.BAD_REQUEST).json({
+                message: "Validation failed",
+                errors: parsed.error.flatten(),
+            });
+        }
+
+        const task = await Task.findOne({
+            where: {
+                public_id: taskPublicId,
+                ranch_id: ranchId,
+            },
+        });
+
+        if (!task) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Task not found",
+            });
+        }
+
+        if (task.getDataValue("cancelled_at")) {
+            return res.status(StatusCodes.BAD_REQUEST).json({
+                message: "Task is already cancelled",
+            });
+        }
+
+        if (task.getDataValue("status") === "completed") {
+            return res.status(StatusCodes.BAD_REQUEST).json({
+                message: "Completed tasks cannot be cancelled",
+            });
+        }
+
+        task.setDataValue("cancelled_at", new Date());
+        task.setDataValue("cancelled_by_user_id", currentUserId);
+        task.setDataValue("cancel_reason", parsed.data.reason ?? null);
+
+        await task.save();
+
+        return res.status(StatusCodes.OK).json({
+            message: "Task cancelled successfully",
+            task: {
+                publicId: task.getDataValue("public_id"),
+                status: task.getDataValue("status"),
+                cancelledAt: task.getDataValue("cancelled_at"),
+                cancelReason: task.getDataValue("cancel_reason"),
+            },
+        });
+    } catch (err: any) {
+        console.error("CANCEL_TASK_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to cancel task",
             error: err?.message ?? "Unknown error",
         });
     }

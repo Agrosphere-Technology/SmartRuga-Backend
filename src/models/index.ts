@@ -209,6 +209,10 @@ Task.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 // Task ↔ User
 Task.belongsTo(User, { foreignKey: "assigned_to_user_id", as: "assignedToUser" });
 Task.belongsTo(User, { foreignKey: "assigned_by_user_id", as: "assignedByUser" });
+Task.belongsTo(User, {
+  foreignKey: "cancelled_by_user_id",
+  as: "cancelledByUser",
+});
 
 Task.hasMany(TaskSubmission, { foreignKey: "task_id", as: "submissions" });
 

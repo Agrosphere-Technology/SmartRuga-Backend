@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { requireRanchAccess } from "../middlewares/ranchAccess";
-import { createTask, listTasks, updateTaskStatus } from "../controllers/task.controller";
+import { cancelTask, createTask, listTasks, updateTaskStatus } from "../controllers/task.controller";
 
 const router = Router();
 
@@ -150,6 +150,62 @@ router.patch(
     requireAuth(),
     requireRanchAccess("slug"),
     updateTaskStatus
+);
+
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/tasks/{taskPublicId}/cancel:
+ *   patch:
+ *     summary: Cancel a task
+ *     description: Allows a ranch owner or manager to cancel a task that was created by mistake or is no longer needed.
+ *     tags: [Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ranch slug
+ *       - in: path
+ *         name: taskPublicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Task public ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 nullable: true
+ *                 example: Created by mistake
+ *     responses:
+ *       200:
+ *         description: Task cancelled successfully
+ *       400:
+ *         description: Validation failed, task already cancelled, or task already completed
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Task not found
+ */
+
+
+router.patch(
+    "/:slug/tasks/:taskPublicId/cancel",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    cancelTask
 );
 
 export default router;
