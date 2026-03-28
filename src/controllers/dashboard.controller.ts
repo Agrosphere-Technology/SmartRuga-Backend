@@ -5,112 +5,20 @@ import { Vaccination, sequelize } from "../models";
 import {
     addDays,
     AnimalStatsRow,
-    DashboardActivityItem,
+    buildDashboardActivity,
     endOfDay,
     RecentActivityRow,
     startOfDay,
+    SubmissionApprovalStatsRow,
+    TaskStatsRow,
 } from "../helpers/dashboard.helpers";
-
-function buildDashboardActivity(items: RecentActivityRow[]): DashboardActivityItem[] {
-    const mapped = items.map((item) => {
-        let title = "Activity recorded";
-        let description = `Activity recorded for animal ${item.animal_tag_number ?? item.animal_public_id}`;
-
-        if (item.type === "health") {
-            title = "Health status updated";
-            description = `Animal ${item.animal_tag_number ?? item.animal_public_id} marked as ${item.status}`;
-        } else if (item.type === "animal_update") {
-            title = "Animal record updated";
-            description = `${item.field} changed from ${item.from_value ?? "-"} to ${item.to_value ?? "-"}`;
-        } else if (item.type === "movement") {
-            title = "Animal moved";
-            description = `Movement type: ${item.movement_type}`;
-        } else if (item.type === "vaccination") {
-            title = "Vaccination recorded";
-            description = `${item.vaccine_name} recorded for animal ${item.animal_tag_number ?? item.animal_public_id}`;
-        }
-
-        return {
-            type: item.type,
-            id: item.id,
-            createdAt: item.created_at,
-            animalPublicId: item.animal_public_id,
-            animalTagNumber: item.animal_tag_number,
-            title,
-            description,
-            field: item.field,
-            from_value: item.from_value,
-            to_value: item.to_value,
-        };
-    });
-
-    const grouped: DashboardActivityItem[] = [];
-    const groupedUpdates = new Map<
-        string,
-        {
-            createdAt: Date;
-            animalPublicId: string;
-            animalTagNumber: string | null;
-            changes: Array<{ field: string | null; from: string | null; to: string | null }>;
-        }
-    >();
-
-    for (const item of mapped) {
-        if (item.type !== "animal_update") {
-            grouped.push({
-                type: item.type,
-                id: item.id,
-                createdAt: item.createdAt,
-                animalPublicId: item.animalPublicId,
-                animalTagNumber: item.animalTagNumber,
-                title: item.title,
-                description: item.description,
-            });
-            continue;
-        }
-
-        const key = `${item.animalPublicId}::${new Date(item.createdAt).toISOString()}`;
-
-        if (!groupedUpdates.has(key)) {
-            groupedUpdates.set(key, {
-                createdAt: item.createdAt,
-                animalPublicId: item.animalPublicId,
-                animalTagNumber: item.animalTagNumber,
-                changes: [],
-            });
-        }
-
-        groupedUpdates.get(key)!.changes.push({
-            field: item.field ?? null,
-            from: item.from_value ?? null,
-            to: item.to_value ?? null,
-        });
-    }
-
-    for (const [key, value] of groupedUpdates.entries()) {
-        grouped.push({
-            type: "animal_update",
-            id: key,
-            createdAt: value.createdAt,
-            animalPublicId: value.animalPublicId,
-            animalTagNumber: value.animalTagNumber,
-            title: "Animal record updated",
-            description: `${value.changes.length} field${value.changes.length > 1 ? "s" : ""} updated`,
-            changes: value.changes,
-        });
-    }
-
-    grouped.sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-
-    return grouped.slice(0, 10);
-}
 
 export async function getRanchDashboard(req: Request, res: Response) {
     try {
         const ranchId = req.ranch!.id;
+        const currentUserId = req.user!.id;
         const ranchRole = req.membership?.ranchRole ?? null;
+        const canManage = ["owner", "manager"].includes(ranchRole ?? "");
 
         const parsedDueSoonDays = Number(req.query.dueSoonDays);
         const dueSoonDays =
@@ -123,7 +31,7 @@ export async function getRanchDashboard(req: Request, res: Response) {
         const todayEnd = endOfDay(now);
         const dueSoonEnd = endOfDay(addDays(now, dueSoonDays));
 
-        const [animalStats] = await sequelize.query<AnimalStatsRow>(
+        const animalStatsPromise = sequelize.query<AnimalStatsRow>(
             `
             SELECT
                 COUNT(*)::text AS total,
@@ -147,7 +55,7 @@ export async function getRanchDashboard(req: Request, res: Response) {
             }
         );
 
-        const vaccinationRows = await Vaccination.findAll({
+        const vaccinationRowsPromise = Vaccination.findAll({
             where: {
                 ranch_id: ranchId,
                 deleted_at: null,
@@ -159,6 +67,413 @@ export async function getRanchDashboard(req: Request, res: Response) {
             attributes: ["next_due_at"],
             raw: true,
         } as any);
+
+        const taskStatsPromise = canManage
+            ? sequelize.query<TaskStatsRow>(
+                `
+                SELECT
+                    COUNT(*)::text AS total,
+                    COUNT(*) FILTER (WHERE t.status = 'pending' AND t.cancelled_at IS NULL)::text AS pending,
+                    COUNT(*) FILTER (WHERE t.status = 'in_progress' AND t.cancelled_at IS NULL)::text AS in_progress,
+                    COUNT(*) FILTER (WHERE t.status = 'completed' AND t.cancelled_at IS NULL)::text AS completed,
+                    COUNT(*) FILTER (WHERE t.cancelled_at IS NOT NULL)::text AS cancelled
+                FROM tasks t
+                WHERE t.ranch_id = $1
+                `,
+                {
+                    bind: [ranchId],
+                    type: QueryTypes.SELECT,
+                }
+            )
+            : sequelize.query<TaskStatsRow>(
+                `
+                SELECT
+                    COUNT(*)::text AS total,
+                    COUNT(*) FILTER (WHERE t.status = 'pending' AND t.cancelled_at IS NULL)::text AS pending,
+                    COUNT(*) FILTER (WHERE t.status = 'in_progress' AND t.cancelled_at IS NULL)::text AS in_progress,
+                    COUNT(*) FILTER (WHERE t.status = 'completed' AND t.cancelled_at IS NULL)::text AS completed,
+                    COUNT(*) FILTER (WHERE t.cancelled_at IS NOT NULL)::text AS cancelled
+                FROM tasks t
+                WHERE t.ranch_id = $1
+                  AND t.assigned_to_user_id = $2
+                `,
+                {
+                    bind: [ranchId, currentUserId],
+                    type: QueryTypes.SELECT,
+                }
+            );
+
+        const submissionApprovalStatsPromise = canManage
+            ? sequelize.query<SubmissionApprovalStatsRow>(
+                `
+                SELECT
+                    COUNT(*) FILTER (WHERE ts.status = 'pending')::text AS pending,
+                    COUNT(*) FILTER (WHERE ts.status = 'approved')::text AS approved,
+                    COUNT(*) FILTER (WHERE ts.status = 'rejected')::text AS rejected
+                FROM task_submissions ts
+                JOIN tasks t ON t.id = ts.task_id
+                WHERE t.ranch_id = $1
+                `,
+                {
+                    bind: [ranchId],
+                    type: QueryTypes.SELECT,
+                }
+            )
+            : sequelize.query<SubmissionApprovalStatsRow>(
+                `
+                SELECT
+                    COUNT(*) FILTER (WHERE ts.status = 'pending')::text AS pending,
+                    COUNT(*) FILTER (WHERE ts.status = 'approved')::text AS approved,
+                    COUNT(*) FILTER (WHERE ts.status = 'rejected')::text AS rejected
+                FROM task_submissions ts
+                JOIN tasks t ON t.id = ts.task_id
+                WHERE t.ranch_id = $1
+                  AND t.assigned_to_user_id = $2
+                `,
+                {
+                    bind: [ranchId, currentUserId],
+                    type: QueryTypes.SELECT,
+                }
+            );
+
+        const recentActivityPromise = canManage
+            ? sequelize.query<RecentActivityRow>(
+                `
+                SELECT *
+                FROM (
+                    SELECT
+                        'health'::text AS type,
+                        e.public_id AS id,
+                        e.created_at,
+                        a.public_id AS animal_public_id,
+                        a.tag_number AS animal_tag_number,
+                        e.status::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        NULL::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        NULL::uuid AS task_public_id,
+                        NULL::text AS task_title,
+                        NULL::text AS review_status
+                    FROM animal_health_events e
+                    JOIN animals a ON a.id = e.animal_id
+                    WHERE a.ranch_id = $1
+
+                    UNION ALL
+
+                    SELECT
+                        'animal_update'::text AS type,
+                        ev.public_id AS id,
+                        ev.created_at,
+                        a.public_id AS animal_public_id,
+                        a.tag_number AS animal_tag_number,
+                        NULL::text AS status,
+                        ev.field,
+                        ev.from_value,
+                        ev.to_value,
+                        NULL::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        NULL::uuid AS task_public_id,
+                        NULL::text AS task_title,
+                        NULL::text AS review_status
+                    FROM animal_activity_events ev
+                    JOIN animals a ON a.id = ev.animal_id
+                    WHERE a.ranch_id = $1
+
+                    UNION ALL
+
+                    SELECT
+                        'movement'::text AS type,
+                        m.public_id AS id,
+                        m.created_at,
+                        a.public_id AS animal_public_id,
+                        a.tag_number AS animal_tag_number,
+                        NULL::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        m.movement_type::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        NULL::uuid AS task_public_id,
+                        NULL::text AS task_title,
+                        NULL::text AS review_status
+                    FROM animal_movement_events m
+                    JOIN animals a ON a.id = m.animal_id
+                    WHERE a.ranch_id = $1
+
+                    UNION ALL
+
+                    SELECT
+                        'vaccination'::text AS type,
+                        v.public_id AS id,
+                        v.created_at,
+                        a.public_id AS animal_public_id,
+                        a.tag_number AS animal_tag_number,
+                        NULL::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        NULL::text AS movement_type,
+                        v.vaccine_name::text AS vaccine_name,
+                        NULL::uuid AS task_public_id,
+                        NULL::text AS task_title,
+                        NULL::text AS review_status
+                    FROM animal_vaccinations v
+                    JOIN animals a ON a.id = v.animal_id
+                    WHERE a.ranch_id = $1
+                      AND v.deleted_at IS NULL
+
+                    UNION ALL
+
+                    SELECT
+                        'task_created'::text AS type,
+                        t.public_id AS id,
+                        t.created_at,
+                        NULL::uuid AS animal_public_id,
+                        NULL::text AS animal_tag_number,
+                        t.status::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        NULL::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        t.public_id AS task_public_id,
+                        t.title AS task_title,
+                        NULL::text AS review_status
+                    FROM tasks t
+                    WHERE t.ranch_id = $1
+
+                    UNION ALL
+
+                    SELECT
+                        'task_submission'::text AS type,
+                        ts.public_id AS id,
+                        ts.created_at,
+                        NULL::uuid AS animal_public_id,
+                        NULL::text AS animal_tag_number,
+                        ts.status::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        NULL::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        t.public_id AS task_public_id,
+                        t.title AS task_title,
+                        NULL::text AS review_status
+                    FROM task_submissions ts
+                    JOIN tasks t ON t.id = ts.task_id
+                    WHERE t.ranch_id = $1
+
+                    UNION ALL
+
+                    SELECT
+                        'task_review'::text AS type,
+                        ts.public_id AS id,
+                        ts.reviewed_at AS created_at,
+                        NULL::uuid AS animal_public_id,
+                        NULL::text AS animal_tag_number,
+                        ts.status::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        NULL::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        t.public_id AS task_public_id,
+                        t.title AS task_title,
+                        ts.status::text AS review_status
+                    FROM task_submissions ts
+                    JOIN tasks t ON t.id = ts.task_id
+                    WHERE t.ranch_id = $1
+                      AND ts.reviewed_at IS NOT NULL
+                ) t
+                ORDER BY created_at DESC
+                LIMIT 25
+                `,
+                {
+                    bind: [ranchId],
+                    type: QueryTypes.SELECT,
+                }
+            )
+            : sequelize.query<RecentActivityRow>(
+                `
+                SELECT *
+                FROM (
+                    SELECT
+                        'health'::text AS type,
+                        e.public_id AS id,
+                        e.created_at,
+                        a.public_id AS animal_public_id,
+                        a.tag_number AS animal_tag_number,
+                        e.status::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        NULL::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        NULL::uuid AS task_public_id,
+                        NULL::text AS task_title,
+                        NULL::text AS review_status
+                    FROM animal_health_events e
+                    JOIN animals a ON a.id = e.animal_id
+                    WHERE a.ranch_id = $1
+
+                    UNION ALL
+
+                    SELECT
+                        'animal_update'::text AS type,
+                        ev.public_id AS id,
+                        ev.created_at,
+                        a.public_id AS animal_public_id,
+                        a.tag_number AS animal_tag_number,
+                        NULL::text AS status,
+                        ev.field,
+                        ev.from_value,
+                        ev.to_value,
+                        NULL::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        NULL::uuid AS task_public_id,
+                        NULL::text AS task_title,
+                        NULL::text AS review_status
+                    FROM animal_activity_events ev
+                    JOIN animals a ON a.id = ev.animal_id
+                    WHERE a.ranch_id = $1
+
+                    UNION ALL
+
+                    SELECT
+                        'movement'::text AS type,
+                        m.public_id AS id,
+                        m.created_at,
+                        a.public_id AS animal_public_id,
+                        a.tag_number AS animal_tag_number,
+                        NULL::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        m.movement_type::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        NULL::uuid AS task_public_id,
+                        NULL::text AS task_title,
+                        NULL::text AS review_status
+                    FROM animal_movement_events m
+                    JOIN animals a ON a.id = m.animal_id
+                    WHERE a.ranch_id = $1
+
+                    UNION ALL
+
+                    SELECT
+                        'vaccination'::text AS type,
+                        v.public_id AS id,
+                        v.created_at,
+                        a.public_id AS animal_public_id,
+                        a.tag_number AS animal_tag_number,
+                        NULL::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        NULL::text AS movement_type,
+                        v.vaccine_name::text AS vaccine_name,
+                        NULL::uuid AS task_public_id,
+                        NULL::text AS task_title,
+                        NULL::text AS review_status
+                    FROM animal_vaccinations v
+                    JOIN animals a ON a.id = v.animal_id
+                    WHERE a.ranch_id = $1
+                      AND v.deleted_at IS NULL
+
+                    UNION ALL
+
+                    SELECT
+                        'task_created'::text AS type,
+                        t.public_id AS id,
+                        t.created_at,
+                        NULL::uuid AS animal_public_id,
+                        NULL::text AS animal_tag_number,
+                        t.status::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        NULL::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        t.public_id AS task_public_id,
+                        t.title AS task_title,
+                        NULL::text AS review_status
+                    FROM tasks t
+                    WHERE t.ranch_id = $1
+                      AND t.assigned_to_user_id = $2
+
+                    UNION ALL
+
+                    SELECT
+                        'task_submission'::text AS type,
+                        ts.public_id AS id,
+                        ts.created_at,
+                        NULL::uuid AS animal_public_id,
+                        NULL::text AS animal_tag_number,
+                        ts.status::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        NULL::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        t.public_id AS task_public_id,
+                        t.title AS task_title,
+                        NULL::text AS review_status
+                    FROM task_submissions ts
+                    JOIN tasks t ON t.id = ts.task_id
+                    WHERE t.ranch_id = $1
+                      AND t.assigned_to_user_id = $2
+
+                    UNION ALL
+
+                    SELECT
+                        'task_review'::text AS type,
+                        ts.public_id AS id,
+                        ts.reviewed_at AS created_at,
+                        NULL::uuid AS animal_public_id,
+                        NULL::text AS animal_tag_number,
+                        ts.status::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        NULL::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        t.public_id AS task_public_id,
+                        t.title AS task_title,
+                        ts.status::text AS review_status
+                    FROM task_submissions ts
+                    JOIN tasks t ON t.id = ts.task_id
+                    WHERE t.ranch_id = $1
+                      AND t.assigned_to_user_id = $2
+                      AND ts.reviewed_at IS NOT NULL
+                ) t
+                ORDER BY created_at DESC
+                LIMIT 25
+                `,
+                {
+                    bind: [ranchId, currentUserId],
+                    type: QueryTypes.SELECT,
+                }
+            );
+
+        const [
+            animalStatsResult,
+            taskStatsResult,
+            submissionApprovalStatsResult,
+            recentActivityRows,
+            vaccinationRows,
+        ] = await Promise.all([
+            animalStatsPromise,
+            taskStatsPromise,
+            submissionApprovalStatsPromise,
+            recentActivityPromise,
+            vaccinationRowsPromise,
+        ]);
+
+        const [animalStats] = animalStatsResult;
+        const [taskStats] = taskStatsResult;
+        const [submissionApprovalStats] = submissionApprovalStatsResult;
 
         let overdue = 0;
         let dueToday = 0;
@@ -177,90 +492,6 @@ export async function getRanchDashboard(req: Request, res: Response) {
             }
         }
 
-        const recentActivityRows = await sequelize.query<RecentActivityRow>(
-            `
-            SELECT *
-            FROM (
-                SELECT
-                    'health'::text AS type,
-                    e.public_id AS id,
-                    e.created_at,
-                    a.public_id AS animal_public_id,
-                    a.tag_number AS animal_tag_number,
-                    e.status::text AS status,
-                    NULL::text AS field,
-                    NULL::text AS from_value,
-                    NULL::text AS to_value,
-                    NULL::text AS movement_type,
-                    NULL::text AS vaccine_name
-                FROM animal_health_events e
-                JOIN animals a ON a.id = e.animal_id
-                WHERE a.ranch_id = $1
-
-                UNION ALL
-
-                SELECT
-                    'animal_update'::text AS type,
-                    ev.public_id AS id,
-                    ev.created_at,
-                    a.public_id AS animal_public_id,
-                    a.tag_number AS animal_tag_number,
-                    NULL::text AS status,
-                    ev.field,
-                    ev.from_value,
-                    ev.to_value,
-                    NULL::text AS movement_type,
-                    NULL::text AS vaccine_name
-                FROM animal_activity_events ev
-                JOIN animals a ON a.id = ev.animal_id
-                WHERE a.ranch_id = $1
-
-                UNION ALL
-
-                SELECT
-                    'movement'::text AS type,
-                    m.public_id AS id,
-                    m.created_at,
-                    a.public_id AS animal_public_id,
-                    a.tag_number AS animal_tag_number,
-                    NULL::text AS status,
-                    NULL::text AS field,
-                    NULL::text AS from_value,
-                    NULL::text AS to_value,
-                    m.movement_type::text AS movement_type,
-                    NULL::text AS vaccine_name
-                FROM animal_movement_events m
-                JOIN animals a ON a.id = m.animal_id
-                WHERE a.ranch_id = $1
-
-                UNION ALL
-
-                SELECT
-                    'vaccination'::text AS type,
-                    v.public_id AS id,
-                    v.created_at,
-                    a.public_id AS animal_public_id,
-                    a.tag_number AS animal_tag_number,
-                    NULL::text AS status,
-                    NULL::text AS field,
-                    NULL::text AS from_value,
-                    NULL::text AS to_value,
-                    NULL::text AS movement_type,
-                    v.vaccine_name::text AS vaccine_name
-                FROM animal_vaccinations v
-                JOIN animals a ON a.id = v.animal_id
-                WHERE a.ranch_id = $1
-                  AND v.deleted_at IS NULL
-            ) t
-            ORDER BY created_at DESC
-            LIMIT 20
-            `,
-            {
-                bind: [ranchId],
-                type: QueryTypes.SELECT,
-            }
-        );
-
         const recentActivity = buildDashboardActivity(recentActivityRows);
 
         return res.status(StatusCodes.OK).json({
@@ -277,6 +508,18 @@ export async function getRanchDashboard(req: Request, res: Response) {
                 dueToday,
                 dueSoon,
                 dueSoonWindowDays: dueSoonDays,
+            },
+            tasks: {
+                total: Number(taskStats?.total ?? 0),
+                pending: Number(taskStats?.pending ?? 0),
+                inProgress: Number(taskStats?.in_progress ?? 0),
+                completed: Number(taskStats?.completed ?? 0),
+                cancelled: Number(taskStats?.cancelled ?? 0),
+            },
+            submissionApprovals: {
+                pending: Number(submissionApprovalStats?.pending ?? 0),
+                approved: Number(submissionApprovalStats?.approved ?? 0),
+                rejected: Number(submissionApprovalStats?.rejected ?? 0),
             },
             recentActivity,
         });
