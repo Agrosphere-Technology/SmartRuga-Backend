@@ -297,3 +297,102 @@ export async function reviewTaskSubmission(req: Request, res: Response) {
         });
     }
 }
+
+export async function getTaskSubmissionByPublicId(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+        const currentUserId = req.user!.id;
+        const ranchRole = req.membership!.ranchRole;
+        const { taskPublicId, submissionPublicId } = req.params;
+
+        const canManage = ["owner", "manager"].includes(ranchRole);
+
+        const task = await Task.findOne({
+            where: {
+                public_id: taskPublicId,
+                ranch_id: ranchId,
+            },
+        });
+
+        if (!task) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Task not found",
+            });
+        }
+
+        const isAssignee = task.getDataValue("assigned_to_user_id") === currentUserId;
+
+        if (!canManage && !isAssignee) {
+            return res.status(StatusCodes.FORBIDDEN).json({
+                message: "You are not allowed to view this submission",
+            });
+        }
+
+        const submission = await TaskSubmission.findOne({
+            where: {
+                public_id: submissionPublicId,
+                task_id: task.getDataValue("id"),
+            },
+            include: [
+                {
+                    model: User,
+                    as: "submittedByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+                {
+                    model: User,
+                    as: "reviewedByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                    required: false,
+                },
+            ],
+        });
+
+        if (!submission) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Submission not found",
+            });
+        }
+
+        const submissionData = submission as any;
+
+        return res.status(StatusCodes.OK).json({
+            task: {
+                publicId: task.getDataValue("public_id"),
+                title: task.getDataValue("title"),
+                status: task.getDataValue("status"),
+            },
+            submission: {
+                publicId: submission.getDataValue("public_id"),
+                proofType: submission.getDataValue("proof_type"),
+                proofUrl: submission.getDataValue("proof_url"),
+                notes: submission.getDataValue("notes"),
+                status: submission.getDataValue("status"),
+                reviewNotes: submission.getDataValue("review_notes"),
+                reviewedAt: submission.getDataValue("reviewed_at"),
+                createdAt: submission.getDataValue("created_at"),
+                updatedAt: submission.getDataValue("updated_at"),
+                submittedBy: submissionData.submittedByUser
+                    ? {
+                        publicId: submissionData.submittedByUser.id,
+                        name: buildUserName(submissionData.submittedByUser),
+                        email: submissionData.submittedByUser.email,
+                    }
+                    : null,
+                reviewedBy: submissionData.reviewedByUser
+                    ? {
+                        publicId: submissionData.reviewedByUser.id,
+                        name: buildUserName(submissionData.reviewedByUser),
+                        email: submissionData.reviewedByUser.email,
+                    }
+                    : null,
+            },
+        });
+    } catch (err: any) {
+        console.error("GET_TASK_SUBMISSION_BY_PUBLIC_ID_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to fetch task submission",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}

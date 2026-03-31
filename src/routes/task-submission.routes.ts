@@ -3,6 +3,7 @@ import { requireAuth } from "../middlewares/auth";
 import { requireRanchAccess } from "../middlewares/ranchAccess";
 import {
     createTaskSubmission,
+    getTaskSubmissionByPublicId,
     listTaskSubmissions,
     reviewTaskSubmission,
 } from "../controllers/task-submission.controller";
@@ -165,6 +166,51 @@ router.patch(
     requireAuth(),
     requireRanchAccess("slug"),
     reviewTaskSubmission
+);
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/tasks/{taskPublicId}/submissions/{submissionPublicId}:
+ *   get:
+ *     summary: Get a task submission by public ID
+ *     description: Returns detailed information for a single task submission.
+ *     tags: [Task Submissions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskPublicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: submissionPublicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Task submission returned successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Task or submission not found
+ */
+
+router.get(
+    "/:slug/tasks/:taskPublicId/submissions/:submissionPublicId",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    getTaskSubmissionByPublicId
 );
 
 export default router;

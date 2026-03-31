@@ -300,3 +300,96 @@ export async function cancelTask(req: Request, res: Response) {
         });
     }
 }
+
+export async function getTaskByPublicId(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+        const currentUserId = req.user!.id;
+        const ranchRole = req.membership!.ranchRole;
+        const { taskPublicId } = req.params;
+
+        const canManage = ["owner", "manager"].includes(ranchRole);
+
+        const task = await Task.findOne({
+            where: {
+                public_id: taskPublicId,
+                ranch_id: ranchId,
+            },
+            include: [
+                {
+                    model: User,
+                    as: "assignedToUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+                {
+                    model: User,
+                    as: "assignedByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+                {
+                    model: User,
+                    as: "cancelledByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                    required: false,
+                },
+            ],
+        });
+
+        if (!task) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Task not found",
+            });
+        }
+
+        const isAssignee = task.getDataValue("assigned_to_user_id") === currentUserId;
+
+        if (!canManage && !isAssignee) {
+            return res.status(StatusCodes.FORBIDDEN).json({
+                message: "You are not allowed to view this task",
+            });
+        }
+
+        const taskData = task as any;
+
+        return res.status(StatusCodes.OK).json({
+            task: {
+                publicId: task.getDataValue("public_id"),
+                title: task.getDataValue("title"),
+                description: task.getDataValue("description"),
+                status: task.getDataValue("status"),
+                dueDate: task.getDataValue("due_date"),
+                createdAt: task.getDataValue("created_at"),
+                updatedAt: task.getDataValue("updated_at"),
+                cancelledAt: task.getDataValue("cancelled_at"),
+                cancelReason: task.getDataValue("cancel_reason"),
+                assignedTo: taskData.assignedToUser
+                    ? {
+                        publicId: taskData.assignedToUser.id,
+                        name: buildUserName(taskData.assignedToUser),
+                        email: taskData.assignedToUser.email,
+                    }
+                    : null,
+                assignedBy: taskData.assignedByUser
+                    ? {
+                        publicId: taskData.assignedByUser.id,
+                        name: buildUserName(taskData.assignedByUser),
+                        email: taskData.assignedByUser.email,
+                    }
+                    : null,
+                cancelledBy: taskData.cancelledByUser
+                    ? {
+                        publicId: taskData.cancelledByUser.id,
+                        name: buildUserName(taskData.cancelledByUser),
+                        email: taskData.cancelledByUser.email,
+                    }
+                    : null,
+            },
+        });
+    } catch (err: any) {
+        console.error("GET_TASK_BY_PUBLIC_ID_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to fetch task",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}

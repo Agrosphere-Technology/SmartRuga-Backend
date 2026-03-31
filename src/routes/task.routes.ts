@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { requireRanchAccess } from "../middlewares/ranchAccess";
-import { cancelTask, createTask, listTasks, updateTaskStatus } from "../controllers/task.controller";
+import { cancelTask, createTask, getTaskByPublicId, listTasks, updateTaskStatus } from "../controllers/task.controller";
 
 const router = Router();
 
@@ -206,6 +206,45 @@ router.patch(
     requireAuth(),
     requireRanchAccess("slug"),
     cancelTask
+);
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/tasks/{taskPublicId}:
+ *   get:
+ *     summary: Get a task by public ID
+ *     description: Returns detailed information for a single task.
+ *     tags: [Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskPublicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Task returned successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Task not found
+ */
+
+router.get(
+    "/:slug/tasks/:taskPublicId",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    getTaskByPublicId
 );
 
 export default router;
