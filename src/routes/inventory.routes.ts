@@ -79,7 +79,7 @@ const router = Router();
  *
  *   get:
  *     summary: List inventory items
- *     description: Returns inventory items for a ranch. Active items are returned by default.
+ *     description: Returns inventory items for a ranch with filtering and pagination. Active items are returned by default.
  *     tags: [Inventory]
  *     security:
  *       - bearerAuth: []
@@ -91,14 +91,70 @@ const router = Router();
  *           type: string
  *         example: test-wolf-ranch
  *       - in: query
- *         name: includeInactive
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 10
+ *       - in: query
+ *         name: category
+ *         required: false
+ *         schema:
+ *           type: string
+ *           example: vaccine
+ *       - in: query
+ *         name: search
+ *         required: false
+ *         schema:
+ *           type: string
+ *           example: anthrax
+ *       - in: query
+ *         name: isActive
  *         required: false
  *         schema:
  *           type: boolean
- *         example: false
+ *           example: true
+ *       - in: query
+ *         name: lowStockOnly
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *           example: false
  *     responses:
  *       200:
  *         description: Inventory items returned successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               items:
+ *                 - publicId: 955a55bd-3732-4b85-8ca9-fc399bae9b90
+ *                   name: Anthrax Vaccine
+ *                   category: vaccine
+ *                   unit: dose
+ *                   sku: VAC-001
+ *                   description: Used for anthrax prevention
+ *                   quantityOnHand: 120
+ *                   reorderLevel: 30
+ *                   isLowStock: false
+ *                   isActive: true
+ *               pagination:
+ *                 page: 1
+ *                 limit: 10
+ *                 totalItems: 1
+ *                 totalPages: 1
+ *                 hasNextPage: false
+ *                 hasPreviousPage: false
+ *               filters:
+ *                 category: vaccine
+ *                 search: null
+ *                 isActive: true
+ *                 lowStockOnly: false
  *       401:
  *         description: Unauthorized
  */
@@ -172,20 +228,6 @@ router.get(
  *     responses:
  *       200:
  *         description: Low stock inventory items returned successfully
- *         content:
- *           application/json:
- *             example:
- *               items:
- *                 - publicId: 955a55bd-3732-4b85-8ca9-fc399bae9b90
- *                   name: Anthrax Vaccine
- *                   category: vaccine
- *                   unit: dose
- *                   sku: VAC-001
- *                   description: Used for anthrax prevention
- *                   quantityOnHand: 12
- *                   reorderLevel: 30
- *                   isLowStock: true
- *                   isActive: true
  *       401:
  *         description: Unauthorized
  */

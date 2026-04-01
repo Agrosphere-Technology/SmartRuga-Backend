@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { Op } from "sequelize";
+import { Op, WhereOptions } from "sequelize";
 import { StatusCodes } from "http-status-codes";
 import {
     sequelize,
@@ -143,21 +143,70 @@ export async function createInventoryItem(req: Request, res: Response) {
     }
 }
 
-// List Inventory Items
+// List Inventory Items with Filtering + Pagination
 export async function listInventoryItems(req: Request, res: Response) {
     try {
         const ranchId = req.ranch!.id;
-        const includeInactive = req.query.includeInactive === "true";
 
-        const whereClause: any = {
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const requestedLimit = Number(req.query.limit) || 10;
+        const limit = Math.min(Math.max(requestedLimit, 1), 100);
+        const offset = (page - 1) * limit;
+
+        const category =
+            typeof req.query.category === "string"
+                ? req.query.category.trim()
+                : undefined;
+
+        const search =
+            typeof req.query.search === "string"
+                ? req.query.search.trim()
+                : undefined;
+
+        const isActiveQuery =
+            typeof req.query.isActive === "string"
+                ? req.query.isActive.trim().toLowerCase()
+                : undefined;
+
+        const lowStockOnly =
+            typeof req.query.lowStockOnly === "string" &&
+            req.query.lowStockOnly.trim().toLowerCase() === "true";
+
+        const whereClause: WhereOptions = {
             ranch_id: ranchId,
         };
 
-        if (!includeInactive) {
-            whereClause.is_active = true;
+        if (isActiveQuery === "true") {
+            (whereClause as any).is_active = true;
+        } else if (isActiveQuery === "false") {
+            (whereClause as any).is_active = false;
+        } else {
+            (whereClause as any).is_active = true;
         }
 
-        const items = await InventoryItem.findAll({
+        if (category) {
+            (whereClause as any).category = {
+                [Op.iLike]: category,
+            };
+        }
+
+        if (search) {
+            (whereClause as any)[Op.or] = [
+                { name: { [Op.iLike]: `%${search}%` } },
+                { category: { [Op.iLike]: `%${search}%` } },
+                { sku: { [Op.iLike]: `%${search}%` } },
+                { description: { [Op.iLike]: `%${search}%` } },
+            ];
+        }
+
+        if (lowStockOnly) {
+            (whereClause as any).is_active = true;
+            (whereClause as any).quantity_on_hand = {
+                [Op.lte]: sequelize.col("reorder_level"),
+            };
+        }
+
+        const { count, rows } = await InventoryItem.findAndCountAll({
             where: whereClause,
             include: [
                 {
@@ -170,10 +219,35 @@ export async function listInventoryItems(req: Request, res: Response) {
                 },
             ],
             order: [["created_at", "DESC"]],
+            limit,
+            offset,
+            distinct: true,
         });
 
+        const totalItems = count;
+        const totalPages = Math.ceil(totalItems / limit) || 1;
+
         return res.status(StatusCodes.OK).json({
-            items: items.map((item) => formatInventoryItem(item)),
+            items: rows.map((item) => formatInventoryItem(item)),
+            pagination: {
+                page,
+                limit,
+                totalItems,
+                totalPages,
+                hasNextPage: page < totalPages,
+                hasPreviousPage: page > 1,
+            },
+            filters: {
+                category: category ?? null,
+                search: search ?? null,
+                isActive:
+                    isActiveQuery === "true"
+                        ? true
+                        : isActiveQuery === "false"
+                            ? false
+                            : true,
+                lowStockOnly,
+            },
         });
     } catch (err: any) {
         console.error("LIST_INVENTORY_ITEMS_ERROR:", err);
