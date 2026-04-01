@@ -15,6 +15,8 @@ import { AnimalMovementEventFactory } from "./animalMovementEvent.model";
 import { RanchLocationFactory } from "./ranchLocation.model";
 import { TaskFactory } from "./task.model";
 import { TaskSubmissionFactory } from "./task-submission.model";
+import { InventoryItemFactory } from "./inventory-item.model";
+import { InventoryStockMovementFactory } from "./inventory-stock-movement.model";
 
 export const sequelize = new Sequelize(process.env.DATABASE_URL!, {
   dialect: "postgres",
@@ -45,6 +47,8 @@ export const RanchAlert = RanchAlertFactory(sequelize);
 export const Vaccination = AnimalVaccinationFactory(sequelize);
 export const Task = TaskFactory(sequelize);
 export const TaskSubmission = TaskSubmissionFactory(sequelize);
+export const InventoryItem = InventoryItemFactory(sequelize);
+export const InventoryStockMovement = InventoryStockMovementFactory(sequelize);
 
 Task.belongsTo(User, { foreignKey: "assigned_by_user_id", as: "assigner" });
 
@@ -222,3 +226,64 @@ TaskSubmission.belongsTo(Task, { foreignKey: "task_id", as: "task" });
 // TaskSubmission ↔ User
 TaskSubmission.belongsTo(User, { foreignKey: "submitted_by_user_id", as: "submittedByUser" });
 TaskSubmission.belongsTo(User, { foreignKey: "reviewed_by_user_id", as: "reviewedByUser" });
+
+
+/**
+ * ===============================
+ * InventoryItem Associations
+ * ===============================
+ */
+
+// Each inventory item belongs to a ranch
+// (multi-tenancy: items are scoped per ranch)
+InventoryItem.belongsTo(Ranch, {
+  foreignKey: "ranch_id",
+  as: "ranch",
+});
+
+// Track who created the inventory item
+InventoryItem.belongsTo(User, {
+  foreignKey: "created_by_user_id",
+  as: "createdByUser",
+});
+
+// Track who last updated the inventory item
+InventoryItem.belongsTo(User, {
+  foreignKey: "updated_by_user_id",
+  as: "updatedByUser",
+});
+
+// One inventory item can have many stock movements
+// (audit trail of all stock changes)
+InventoryItem.hasMany(InventoryStockMovement, {
+  foreignKey: "inventory_item_id",
+  as: "stockMovements",
+});
+
+
+/**
+ * ===============================
+ * InventoryStockMovement Associations
+ * ===============================
+ */
+
+// Each stock movement belongs to an inventory item
+// (e.g., stock_in, stock_out, adjustment)
+InventoryStockMovement.belongsTo(InventoryItem, {
+  foreignKey: "inventory_item_id",
+  as: "inventoryItem",
+});
+
+// Track which user recorded the stock movement
+// (important for accountability and audit logs)
+InventoryStockMovement.belongsTo(User, {
+  foreignKey: "recorded_by_user_id",
+  as: "recordedByUser",
+});
+
+// Each movement is also scoped to a ranch
+// (ensures proper multi-tenant isolation)
+InventoryStockMovement.belongsTo(Ranch, {
+  foreignKey: "ranch_id",
+  as: "ranch",
+});
