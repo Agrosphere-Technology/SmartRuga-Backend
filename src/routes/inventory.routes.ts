@@ -4,10 +4,12 @@ import { requireRanchAccess } from "../middlewares/ranchAccess";
 import {
     createInventoryItem,
     deactivateInventoryItem,
+    getInventoryDashboard,
     getInventoryItemByPublicId,
     getInventorySummary,
     listInventoryItems,
     listLowStockInventoryItems,
+    listRecentInventoryMovements,
     listStockMovements,
     recordStockMovement,
     updateInventoryItem,
@@ -129,34 +131,6 @@ const router = Router();
  *     responses:
  *       200:
  *         description: Inventory items returned successfully
- *         content:
- *           application/json:
- *             example:
- *               items:
- *                 - publicId: 955a55bd-3732-4b85-8ca9-fc399bae9b90
- *                   name: Anthrax Vaccine
- *                   category: vaccine
- *                   unit: dose
- *                   sku: VAC-001
- *                   description: Used for anthrax prevention
- *                   quantityOnHand: 120
- *                   reorderLevel: 30
- *                   isLowStock: false
- *                   isActive: true
- *               pagination:
- *                 page: 1
- *                 limit: 10
- *                 totalItems: 1
- *                 totalPages: 1
- *                 hasNextPage: false
- *                 hasPreviousPage: false
- *               filters:
- *                 category: vaccine
- *                 search: null
- *                 isActive: true
- *                 lowStockOnly: false
- *       401:
- *         description: Unauthorized
  */
 router.post(
     "/:slug/inventory-items",
@@ -236,6 +210,104 @@ router.get(
     requireAuth(),
     requireRanchAccess("slug"),
     listLowStockInventoryItems
+);
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/inventory-items/dashboard:
+ *   get:
+ *     summary: Get inventory dashboard analytics
+ *     description: Returns inventory analytics including totals, low stock count, total quantity on hand, and category breakdown.
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *     responses:
+ *       200:
+ *         description: Inventory dashboard analytics returned successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               dashboard:
+ *                 totalItems: 12
+ *                 activeItems: 10
+ *                 inactiveItems: 2
+ *                 lowStockItems: 3
+ *                 totalQuantityOnHand: 540
+ *                 categories:
+ *                   - category: vaccine
+ *                     count: 4
+ *                     totalQuantityOnHand: 180
+ *                   - category: medicine
+ *                     count: 3
+ *                     totalQuantityOnHand: 90
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+    "/:slug/inventory-items/dashboard",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    getInventoryDashboard
+);
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/inventory-items/recent-movements:
+ *   get:
+ *     summary: List recent inventory movements
+ *     description: Returns recent stock movement activity across the ranch inventory.
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 10
+ *     responses:
+ *       200:
+ *         description: Recent inventory movements returned successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               movements:
+ *                 - publicId: movement-uuid
+ *                   type: stock_out
+ *                   quantity: 10
+ *                   previousQuantity: 50
+ *                   newQuantity: 40
+ *                   reason: Used for treatment
+ *                   createdAt: 2026-04-01T12:00:00.000Z
+ *                   item:
+ *                     publicId: item-uuid
+ *                     name: Anthrax Vaccine
+ *                     category: vaccine
+ *                     unit: dose
+ *                   recordedByUser:
+ *                     email: superadmin@smartruga.com
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+    "/:slug/inventory-items/recent-movements",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    listRecentInventoryMovements
 );
 
 /**

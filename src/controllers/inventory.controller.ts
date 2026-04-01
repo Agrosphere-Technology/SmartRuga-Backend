@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { Op, WhereOptions } from "sequelize";
+import { Op, WhereOptions, fn, col, literal } from "sequelize";
 import { StatusCodes } from "http-status-codes";
 import {
     sequelize,
@@ -119,14 +119,8 @@ export async function createInventoryItem(req: Request, res: Response) {
                 id: createdItem.getDataValue("id"),
             },
             include: [
-                {
-                    model: User,
-                    as: "createdByUser",
-                },
-                {
-                    model: User,
-                    as: "updatedByUser",
-                },
+                { model: User, as: "createdByUser" },
+                { model: User, as: "updatedByUser" },
             ],
         });
 
@@ -209,14 +203,8 @@ export async function listInventoryItems(req: Request, res: Response) {
         const { count, rows } = await InventoryItem.findAndCountAll({
             where: whereClause,
             include: [
-                {
-                    model: User,
-                    as: "createdByUser",
-                },
-                {
-                    model: User,
-                    as: "updatedByUser",
-                },
+                { model: User, as: "createdByUser" },
+                { model: User, as: "updatedByUser" },
             ],
             order: [["created_at", "DESC"]],
             limit,
@@ -266,21 +254,13 @@ export async function getInventorySummary(req: Request, res: Response) {
         const [totalItems, activeItems, inactiveItems, lowStockItems] =
             await Promise.all([
                 InventoryItem.count({
-                    where: {
-                        ranch_id: ranchId,
-                    },
+                    where: { ranch_id: ranchId },
                 }),
                 InventoryItem.count({
-                    where: {
-                        ranch_id: ranchId,
-                        is_active: true,
-                    },
+                    where: { ranch_id: ranchId, is_active: true },
                 }),
                 InventoryItem.count({
-                    where: {
-                        ranch_id: ranchId,
-                        is_active: false,
-                    },
+                    where: { ranch_id: ranchId, is_active: false },
                 }),
                 InventoryItem.count({
                     where: {
@@ -324,14 +304,8 @@ export async function listLowStockInventoryItems(req: Request, res: Response) {
                 },
             },
             include: [
-                {
-                    model: User,
-                    as: "createdByUser",
-                },
-                {
-                    model: User,
-                    as: "updatedByUser",
-                },
+                { model: User, as: "createdByUser" },
+                { model: User, as: "updatedByUser" },
             ],
             order: [["updated_at", "ASC"]],
         });
@@ -343,6 +317,171 @@ export async function listLowStockInventoryItems(req: Request, res: Response) {
         console.error("LIST_LOW_STOCK_INVENTORY_ITEMS_ERROR:", err);
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             message: "Failed to fetch low stock inventory items",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}
+
+// Inventory Dashboard Analytics
+export async function getInventoryDashboard(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+
+        const [
+            totalItems,
+            activeItems,
+            inactiveItems,
+            lowStockItems,
+            totalQuantityResult,
+            categoryBreakdown,
+        ] = await Promise.all([
+            InventoryItem.count({
+                where: { ranch_id: ranchId },
+            }),
+            InventoryItem.count({
+                where: { ranch_id: ranchId, is_active: true },
+            }),
+            InventoryItem.count({
+                where: { ranch_id: ranchId, is_active: false },
+            }),
+            InventoryItem.count({
+                where: {
+                    ranch_id: ranchId,
+                    is_active: true,
+                    quantity_on_hand: {
+                        [Op.lte]: sequelize.col("reorder_level"),
+                    },
+                },
+            }),
+            InventoryItem.findOne({
+                where: { ranch_id: ranchId },
+                attributes: [
+                    [
+                        fn(
+                            "COALESCE",
+                            fn("SUM", col("quantity_on_hand")),
+                            0
+                        ),
+                        "total_quantity_on_hand",
+                    ],
+                ],
+                raw: true,
+            }),
+            InventoryItem.findAll({
+                where: {
+                    ranch_id: ranchId,
+                    is_active: true,
+                },
+                attributes: [
+                    "category",
+                    [fn("COUNT", col("id")), "count"],
+                    [
+                        fn(
+                            "COALESCE",
+                            fn("SUM", col("quantity_on_hand")),
+                            0
+                        ),
+                        "totalQuantityOnHand",
+                    ],
+                ],
+                group: ["category"],
+                order: [[literal(`COUNT(id)`), "DESC"]],
+                raw: true,
+            }),
+        ]);
+
+        const totalQuantityOnHand = Number(
+            (totalQuantityResult as any)?.total_quantity_on_hand ?? 0
+        );
+
+        return res.status(StatusCodes.OK).json({
+            dashboard: {
+                totalItems,
+                activeItems,
+                inactiveItems,
+                lowStockItems,
+                totalQuantityOnHand,
+                categories: (categoryBreakdown as any[]).map((row) => ({
+                    category: row.category,
+                    count: Number(row.count ?? 0),
+                    totalQuantityOnHand: Number(row.totalQuantityOnHand ?? 0),
+                })),
+            },
+        });
+    } catch (err: any) {
+        console.error("GET_INVENTORY_DASHBOARD_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to fetch inventory dashboard analytics",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}
+
+// Recent Inventory Movements
+export async function listRecentInventoryMovements(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+        const requestedLimit = Number(req.query.limit) || 10;
+        const limit = Math.min(Math.max(requestedLimit, 1), 50);
+
+        const movements = await InventoryStockMovement.findAll({
+            where: {
+                ranch_id: ranchId,
+            },
+            include: [
+                {
+                    model: InventoryItem,
+                    as: "inventoryItem",
+                },
+                {
+                    model: User,
+                    as: "recordedByUser",
+                },
+            ],
+            order: [["created_at", "DESC"]],
+            limit,
+        });
+
+        return res.status(StatusCodes.OK).json({
+            movements: movements.map((movement: any) => {
+                const recordedByUser =
+                    movement.get("recordedByUser") ?? null;
+                const inventoryItem =
+                    movement.get("inventoryItem") ?? null;
+
+                return {
+                    publicId: pickValue(movement, ["public_id", "publicId"]),
+                    type: pickValue(movement, ["type"]),
+                    quantity: Number(pickValue(movement, ["quantity"]) ?? 0),
+                    previousQuantity: Number(
+                        pickValue(movement, ["previous_quantity", "previousQuantity"]) ?? 0
+                    ),
+                    newQuantity: Number(
+                        pickValue(movement, ["new_quantity", "newQuantity"]) ?? 0
+                    ),
+                    reason: pickValue(movement, ["reason"]),
+                    referenceType: pickValue(movement, ["reference_type", "referenceType"]),
+                    referencePublicId: pickValue(movement, [
+                        "reference_public_id",
+                        "referencePublicId",
+                    ]),
+                    createdAt: pickValue(movement, ["created_at", "createdAt"]),
+                    item: inventoryItem
+                        ? {
+                            publicId: pickValue(inventoryItem, ["public_id", "publicId"]),
+                            name: pickValue(inventoryItem, ["name"]),
+                            category: pickValue(inventoryItem, ["category"]),
+                            unit: pickValue(inventoryItem, ["unit"]),
+                        }
+                        : null,
+                    recordedByUser: formatUser(recordedByUser),
+                };
+            }),
+        });
+    } catch (err: any) {
+        console.error("LIST_RECENT_INVENTORY_MOVEMENTS_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to fetch recent inventory movements",
             error: err?.message ?? "Unknown error",
         });
     }
@@ -360,14 +499,8 @@ export async function getInventoryItemByPublicId(req: Request, res: Response) {
                 ranch_id: ranchId,
             },
             include: [
-                {
-                    model: User,
-                    as: "createdByUser",
-                },
-                {
-                    model: User,
-                    as: "updatedByUser",
-                },
+                { model: User, as: "createdByUser" },
+                { model: User, as: "updatedByUser" },
             ],
         });
 
@@ -446,14 +579,8 @@ export async function updateInventoryItem(req: Request, res: Response) {
                 ranch_id: ranchId,
             },
             include: [
-                {
-                    model: User,
-                    as: "createdByUser",
-                },
-                {
-                    model: User,
-                    as: "updatedByUser",
-                },
+                { model: User, as: "createdByUser" },
+                { model: User, as: "updatedByUser" },
             ],
         });
 
@@ -514,14 +641,8 @@ export async function deactivateInventoryItem(req: Request, res: Response) {
                 ranch_id: ranchId,
             },
             include: [
-                {
-                    model: User,
-                    as: "createdByUser",
-                },
-                {
-                    model: User,
-                    as: "updatedByUser",
-                },
+                { model: User, as: "createdByUser" },
+                { model: User, as: "updatedByUser" },
             ],
         });
 
@@ -642,10 +763,7 @@ export async function recordStockMovement(req: Request, res: Response) {
                 id: createdMovement.getDataValue("id"),
             },
             include: [
-                {
-                    model: User,
-                    as: "recordedByUser",
-                },
+                { model: User, as: "recordedByUser" },
             ],
         });
 
@@ -711,10 +829,7 @@ export async function listStockMovements(req: Request, res: Response) {
                 inventory_item_id: item.getDataValue("id"),
             },
             include: [
-                {
-                    model: User,
-                    as: "recordedByUser",
-                },
+                { model: User, as: "recordedByUser" },
             ],
             order: [["created_at", "DESC"]],
         });
