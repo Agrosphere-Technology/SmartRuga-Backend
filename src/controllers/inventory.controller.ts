@@ -1,10 +1,79 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
-import { sequelize, InventoryItem, InventoryStockMovement } from "../models";
+import {
+    sequelize,
+    InventoryItem,
+    InventoryStockMovement,
+    User,
+} from "../models";
 import {
     createInventoryItemSchema,
     createStockMovementSchema,
+    updateInventoryItemSchema,
 } from "../validators/inventory.validator";
+import { ALLOWED_INVENTORY_MANAGERS } from "../helpers/inventory.helpers";
+
+function pickValue(obj: any, keys: string[]) {
+    if (!obj) return null;
+
+    for (const key of keys) {
+        const value =
+            obj?.getDataValue?.(key) ??
+            obj?.dataValues?.[key] ??
+            obj?.[key];
+
+        if (value !== undefined && value !== null) {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+function formatUser(user: any) {
+    if (!user) return null;
+
+    const firstName = pickValue(user, ["first_name", "firstName"]);
+    const lastName = pickValue(user, ["last_name", "lastName"]);
+    const combinedName =
+        [firstName, lastName].filter(Boolean).join(" ").trim() || null;
+
+    return {
+        publicId: pickValue(user, ["public_id", "publicId"]),
+        name: pickValue(user, ["name", "full_name", "fullName"]) ?? combinedName,
+        email: pickValue(user, ["email"]),
+    };
+}
+
+function formatInventoryItem(item: any) {
+    const quantityOnHand = Number(
+        pickValue(item, ["quantity_on_hand", "quantityOnHand"]) ?? 0
+    );
+
+    const reorderLevel = Number(
+        pickValue(item, ["reorder_level", "reorderLevel"]) ?? 0
+    );
+
+    const createdByUser = item?.get?.("createdByUser") ?? item?.createdByUser;
+    const updatedByUser = item?.get?.("updatedByUser") ?? item?.updatedByUser;
+
+    return {
+        publicId: pickValue(item, ["public_id", "publicId"]),
+        name: pickValue(item, ["name"]),
+        category: pickValue(item, ["category"]),
+        unit: pickValue(item, ["unit"]),
+        sku: pickValue(item, ["sku"]),
+        description: pickValue(item, ["description"]),
+        quantityOnHand,
+        reorderLevel,
+        isLowStock: quantityOnHand <= reorderLevel,
+        isActive: pickValue(item, ["is_active", "isActive"]),
+        createdAt: pickValue(item, ["created_at", "createdAt"]),
+        updatedAt: pickValue(item, ["updated_at", "updatedAt"]),
+        createdByUser: formatUser(createdByUser),
+        updatedByUser: formatUser(updatedByUser),
+    };
+}
 
 // Create Inventory Item
 export async function createInventoryItem(req: Request, res: Response) {
@@ -13,7 +82,7 @@ export async function createInventoryItem(req: Request, res: Response) {
         const userId = req.user!.id;
         const ranchRole = req.membership!.ranchRole;
 
-        if (!["owner", "manager"].includes(ranchRole)) {
+        if (!ALLOWED_INVENTORY_MANAGERS.includes(ranchRole)) {
             return res.status(StatusCodes.FORBIDDEN).json({
                 message: "Forbidden",
             });
@@ -30,7 +99,7 @@ export async function createInventoryItem(req: Request, res: Response) {
 
         const validated = parsed.data;
 
-        const item = await InventoryItem.create({
+        const createdItem = await InventoryItem.create({
             ranch_id: ranchId,
             name: validated.name,
             category: validated.category,
@@ -39,21 +108,30 @@ export async function createInventoryItem(req: Request, res: Response) {
             description: validated.description ?? null,
             quantity_on_hand: validated.quantityOnHand,
             reorder_level: validated.reorderLevel,
+            is_active: true,
             created_by_user_id: userId,
+            updated_by_user_id: userId,
+        });
+
+        const item = await InventoryItem.findOne({
+            where: {
+                id: createdItem.getDataValue("id"),
+            },
+            include: [
+                {
+                    model: User,
+                    as: "createdByUser",
+                },
+                {
+                    model: User,
+                    as: "updatedByUser",
+                },
+            ],
         });
 
         return res.status(StatusCodes.CREATED).json({
             message: "Inventory item created successfully",
-            item: {
-                publicId: item.getDataValue("public_id"),
-                name: item.getDataValue("name"),
-                category: item.getDataValue("category"),
-                unit: item.getDataValue("unit"),
-                quantityOnHand: Number(item.getDataValue("quantity_on_hand")),
-                reorderLevel: Number(item.getDataValue("reorder_level")),
-                isActive: item.getDataValue("is_active"),
-                createdAt: item.getDataValue("created_at"),
-            },
+            item: formatInventoryItem(item),
         });
     } catch (err: any) {
         console.error("CREATE_INVENTORY_ITEM_ERROR:", err);
@@ -68,35 +146,33 @@ export async function createInventoryItem(req: Request, res: Response) {
 export async function listInventoryItems(req: Request, res: Response) {
     try {
         const ranchId = req.ranch!.id;
+        const includeInactive = req.query.includeInactive === "true";
+
+        const whereClause: any = {
+            ranch_id: ranchId,
+        };
+
+        if (!includeInactive) {
+            whereClause.is_active = true;
+        }
 
         const items = await InventoryItem.findAll({
-            where: {
-                ranch_id: ranchId,
-                is_active: true,
-            },
+            where: whereClause,
+            include: [
+                {
+                    model: User,
+                    as: "createdByUser",
+                },
+                {
+                    model: User,
+                    as: "updatedByUser",
+                },
+            ],
             order: [["created_at", "DESC"]],
         });
 
         return res.status(StatusCodes.OK).json({
-            items: items.map((item) => {
-                const quantityOnHand = Number(item.getDataValue("quantity_on_hand"));
-                const reorderLevel = Number(item.getDataValue("reorder_level"));
-
-                return {
-                    publicId: item.getDataValue("public_id"),
-                    name: item.getDataValue("name"),
-                    category: item.getDataValue("category"),
-                    unit: item.getDataValue("unit"),
-                    sku: item.getDataValue("sku"),
-                    description: item.getDataValue("description"),
-                    quantityOnHand,
-                    reorderLevel,
-                    isLowStock: quantityOnHand <= reorderLevel,
-                    isActive: item.getDataValue("is_active"),
-                    createdAt: item.getDataValue("created_at"),
-                    updatedAt: item.getDataValue("updated_at"),
-                };
-            }),
+            items: items.map((item) => formatInventoryItem(item)),
         });
     } catch (err: any) {
         console.error("LIST_INVENTORY_ITEMS_ERROR:", err);
@@ -118,6 +194,16 @@ export async function getInventoryItemByPublicId(req: Request, res: Response) {
                 public_id: itemPublicId,
                 ranch_id: ranchId,
             },
+            include: [
+                {
+                    model: User,
+                    as: "createdByUser",
+                },
+                {
+                    model: User,
+                    as: "updatedByUser",
+                },
+            ],
         });
 
         if (!item) {
@@ -126,29 +212,162 @@ export async function getInventoryItemByPublicId(req: Request, res: Response) {
             });
         }
 
-        const quantityOnHand = Number(item.getDataValue("quantity_on_hand"));
-        const reorderLevel = Number(item.getDataValue("reorder_level"));
-
         return res.status(StatusCodes.OK).json({
-            item: {
-                publicId: item.getDataValue("public_id"),
-                name: item.getDataValue("name"),
-                category: item.getDataValue("category"),
-                unit: item.getDataValue("unit"),
-                sku: item.getDataValue("sku"),
-                description: item.getDataValue("description"),
-                quantityOnHand,
-                reorderLevel,
-                isLowStock: quantityOnHand <= reorderLevel,
-                isActive: item.getDataValue("is_active"),
-                createdAt: item.getDataValue("created_at"),
-                updatedAt: item.getDataValue("updated_at"),
-            },
+            item: formatInventoryItem(item),
         });
     } catch (err: any) {
         console.error("GET_INVENTORY_ITEM_ERROR:", err);
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             message: "Failed to fetch inventory item",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}
+
+// Update Inventory Item
+export async function updateInventoryItem(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+        const userId = req.user!.id;
+        const ranchRole = req.membership!.ranchRole;
+        const { itemPublicId } = req.params;
+
+        if (!ALLOWED_INVENTORY_MANAGERS.includes(ranchRole)) {
+            return res.status(StatusCodes.FORBIDDEN).json({
+                message: "Forbidden",
+            });
+        }
+
+        const parsed = updateInventoryItemSchema.safeParse(req.body);
+
+        if (!parsed.success) {
+            return res.status(StatusCodes.BAD_REQUEST).json({
+                message: "Validation failed",
+                errors: parsed.error.flatten(),
+            });
+        }
+
+        const validated = parsed.data;
+
+        const item = await InventoryItem.findOne({
+            where: {
+                public_id: itemPublicId,
+                ranch_id: ranchId,
+            },
+        });
+
+        if (!item) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Item not found",
+            });
+        }
+
+        await item.update({
+            ...(validated.name !== undefined ? { name: validated.name } : {}),
+            ...(validated.category !== undefined ? { category: validated.category } : {}),
+            ...(validated.unit !== undefined ? { unit: validated.unit } : {}),
+            ...(validated.sku !== undefined ? { sku: validated.sku } : {}),
+            ...(validated.description !== undefined ? { description: validated.description } : {}),
+            ...(validated.reorderLevel !== undefined
+                ? { reorder_level: validated.reorderLevel }
+                : {}),
+            ...(validated.isActive !== undefined ? { is_active: validated.isActive } : {}),
+            updated_by_user_id: userId,
+        });
+
+        const updatedItem = await InventoryItem.findOne({
+            where: {
+                public_id: itemPublicId,
+                ranch_id: ranchId,
+            },
+            include: [
+                {
+                    model: User,
+                    as: "createdByUser",
+                },
+                {
+                    model: User,
+                    as: "updatedByUser",
+                },
+            ],
+        });
+
+        return res.status(StatusCodes.OK).json({
+            message: "Inventory item updated successfully",
+            item: formatInventoryItem(updatedItem),
+        });
+    } catch (err: any) {
+        console.error("UPDATE_INVENTORY_ITEM_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to update inventory item",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}
+
+// Deactivate Inventory Item
+export async function deactivateInventoryItem(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+        const userId = req.user!.id;
+        const ranchRole = req.membership!.ranchRole;
+        const { itemPublicId } = req.params;
+
+        if (!ALLOWED_INVENTORY_MANAGERS.includes(ranchRole)) {
+            return res.status(StatusCodes.FORBIDDEN).json({
+                message: "Forbidden",
+            });
+        }
+
+        const item = await InventoryItem.findOne({
+            where: {
+                public_id: itemPublicId,
+                ranch_id: ranchId,
+            },
+        });
+
+        if (!item) {
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: "Item not found",
+            });
+        }
+
+        if (!item.getDataValue("is_active")) {
+            return res.status(StatusCodes.BAD_REQUEST).json({
+                message: "Inventory item is already inactive",
+            });
+        }
+
+        await item.update({
+            is_active: false,
+            updated_by_user_id: userId,
+        });
+
+        const updatedItem = await InventoryItem.findOne({
+            where: {
+                public_id: itemPublicId,
+                ranch_id: ranchId,
+            },
+            include: [
+                {
+                    model: User,
+                    as: "createdByUser",
+                },
+                {
+                    model: User,
+                    as: "updatedByUser",
+                },
+            ],
+        });
+
+        return res.status(StatusCodes.OK).json({
+            message: "Inventory item deactivated successfully",
+            item: formatInventoryItem(updatedItem),
+        });
+    } catch (err: any) {
+        console.error("DEACTIVATE_INVENTORY_ITEM_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to deactivate inventory item",
             error: err?.message ?? "Unknown error",
         });
     }
@@ -164,7 +383,7 @@ export async function recordStockMovement(req: Request, res: Response) {
         const ranchRole = req.membership!.ranchRole;
         const { itemPublicId } = req.params;
 
-        if (!["owner", "manager"].includes(ranchRole)) {
+        if (!ALLOWED_INVENTORY_MANAGERS.includes(ranchRole)) {
             await transaction.rollback();
             return res.status(StatusCodes.FORBIDDEN).json({
                 message: "Forbidden",
@@ -198,6 +417,13 @@ export async function recordStockMovement(req: Request, res: Response) {
             });
         }
 
+        if (!item.getDataValue("is_active")) {
+            await transaction.rollback();
+            return res.status(StatusCodes.BAD_REQUEST).json({
+                message: "Cannot record stock movement for an inactive item",
+            });
+        }
+
         const previous = Number(item.getDataValue("quantity_on_hand"));
         let newQuantity = previous;
 
@@ -212,6 +438,7 @@ export async function recordStockMovement(req: Request, res: Response) {
                     message: "Insufficient stock",
                 });
             }
+
             newQuantity = previous - validated.quantity;
         }
 
@@ -227,7 +454,7 @@ export async function recordStockMovement(req: Request, res: Response) {
             { transaction }
         );
 
-        const movement = await InventoryStockMovement.create(
+        const createdMovement = await InventoryStockMovement.create(
             {
                 inventory_item_id: item.getDataValue("id"),
                 ranch_id: ranchId,
@@ -245,16 +472,40 @@ export async function recordStockMovement(req: Request, res: Response) {
 
         await transaction.commit();
 
+        const movement = await InventoryStockMovement.findOne({
+            where: {
+                id: createdMovement.getDataValue("id"),
+            },
+            include: [
+                {
+                    model: User,
+                    as: "recordedByUser",
+                },
+            ],
+        });
+
+        const recordedByUser = movement?.get("recordedByUser") ?? null;
+
         return res.status(StatusCodes.CREATED).json({
             message: "Stock movement recorded successfully",
             movement: {
-                publicId: movement.getDataValue("public_id"),
-                type: movement.getDataValue("type"),
-                quantity: Number(movement.getDataValue("quantity")),
-                previousQuantity: Number(movement.getDataValue("previous_quantity")),
-                newQuantity: Number(movement.getDataValue("new_quantity")),
-                reason: movement.getDataValue("reason"),
-                createdAt: movement.getDataValue("created_at"),
+                publicId: pickValue(movement, ["public_id", "publicId"]),
+                type: pickValue(movement, ["type"]),
+                quantity: Number(pickValue(movement, ["quantity"]) ?? 0),
+                previousQuantity: Number(
+                    pickValue(movement, ["previous_quantity", "previousQuantity"]) ?? 0
+                ),
+                newQuantity: Number(
+                    pickValue(movement, ["new_quantity", "newQuantity"]) ?? 0
+                ),
+                reason: pickValue(movement, ["reason"]),
+                referenceType: pickValue(movement, ["reference_type", "referenceType"]),
+                referencePublicId: pickValue(movement, [
+                    "reference_public_id",
+                    "referencePublicId",
+                ]),
+                createdAt: pickValue(movement, ["created_at", "createdAt"]),
+                recordedByUser: formatUser(recordedByUser),
             },
             item: {
                 publicId: item.getDataValue("public_id"),
@@ -294,6 +545,12 @@ export async function listStockMovements(req: Request, res: Response) {
             where: {
                 inventory_item_id: item.getDataValue("id"),
             },
+            include: [
+                {
+                    model: User,
+                    as: "recordedByUser",
+                },
+            ],
             order: [["created_at", "DESC"]],
         });
 
@@ -302,18 +559,34 @@ export async function listStockMovements(req: Request, res: Response) {
                 publicId: item.getDataValue("public_id"),
                 name: item.getDataValue("name"),
                 quantityOnHand: Number(item.getDataValue("quantity_on_hand")),
+                isActive: item.getDataValue("is_active"),
             },
-            movements: movements.map((m) => ({
-                publicId: m.getDataValue("public_id"),
-                type: m.getDataValue("type"),
-                quantity: Number(m.getDataValue("quantity")),
-                previousQuantity: Number(m.getDataValue("previous_quantity")),
-                newQuantity: Number(m.getDataValue("new_quantity")),
-                reason: m.getDataValue("reason"),
-                referenceType: m.getDataValue("reference_type"),
-                referencePublicId: m.getDataValue("reference_public_id"),
-                createdAt: m.getDataValue("created_at"),
-            })),
+            movements: movements.map((movement: any) => {
+                const recordedByUser = movement.get("recordedByUser") ?? null;
+
+                return {
+                    publicId: pickValue(movement, ["public_id", "publicId"]),
+                    type: pickValue(movement, ["type"]),
+                    quantity: Number(pickValue(movement, ["quantity"]) ?? 0),
+                    previousQuantity: Number(
+                        pickValue(movement, ["previous_quantity", "previousQuantity"]) ?? 0
+                    ),
+                    newQuantity: Number(
+                        pickValue(movement, ["new_quantity", "newQuantity"]) ?? 0
+                    ),
+                    reason: pickValue(movement, ["reason"]),
+                    referenceType: pickValue(movement, [
+                        "reference_type",
+                        "referenceType",
+                    ]),
+                    referencePublicId: pickValue(movement, [
+                        "reference_public_id",
+                        "referencePublicId",
+                    ]),
+                    createdAt: pickValue(movement, ["created_at", "createdAt"]),
+                    recordedByUser: formatUser(recordedByUser),
+                };
+            }),
         });
     } catch (err: any) {
         console.error("LIST_STOCK_MOVEMENTS_ERROR:", err);

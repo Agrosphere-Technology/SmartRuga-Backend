@@ -1,0 +1,1 @@
+export const ALLOWED_INVENTORY_MANAGERS = ["owner", "manager", "storekeeper"];

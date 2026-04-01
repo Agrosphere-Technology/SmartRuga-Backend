@@ -20,10 +20,31 @@ export const updateInventoryItemSchema = z.object({
     isActive: z.boolean().optional(),
 });
 
-export const createStockMovementSchema = z.object({
-    type: z.enum(["stock_in", "stock_out", "adjustment"]),
-    quantity: z.number().positive(),
-    reason: z.string().trim().max(3000).optional().nullable(),
-    referenceType: z.string().trim().max(100).optional().nullable(),
-    referencePublicId: z.string().uuid().optional().nullable(),
-});
+export const createStockMovementSchema = z
+    .object({
+        type: z.enum(["stock_in", "stock_out", "adjustment"]),
+        quantity: z.number(),
+        reason: z.string().trim().max(3000).optional().nullable(),
+        referenceType: z.string().trim().max(100).optional().nullable(),
+        referencePublicId: z.string().uuid().optional().nullable(),
+    })
+    .superRefine((data, ctx) => {
+        if (
+            (data.type === "stock_in" || data.type === "stock_out") &&
+            data.quantity <= 0
+        ) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["quantity"],
+                message: "Quantity must be greater than 0 for stock_in or stock_out",
+            });
+        }
+
+        if (data.type === "adjustment" && data.quantity < 0) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["quantity"],
+                message: "Quantity cannot be negative for adjustment",
+            });
+        }
+    });
