@@ -5,7 +5,9 @@ import {
     createInventoryItem,
     deactivateInventoryItem,
     getInventoryItemByPublicId,
+    getInventorySummary,
     listInventoryItems,
+    listLowStockInventoryItems,
     listStockMovements,
     recordStockMovement,
     updateInventoryItem,
@@ -112,6 +114,86 @@ router.get(
     requireAuth(),
     requireRanchAccess("slug"),
     listInventoryItems
+);
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/inventory-items/summary:
+ *   get:
+ *     summary: Get inventory summary
+ *     description: Returns summary statistics for inventory items in a ranch.
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *     responses:
+ *       200:
+ *         description: Inventory summary returned successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               summary:
+ *                 totalItems: 12
+ *                 activeItems: 10
+ *                 inactiveItems: 2
+ *                 lowStockItems: 3
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+    "/:slug/inventory-items/summary",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    getInventorySummary
+);
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/inventory-items/low-stock:
+ *   get:
+ *     summary: List low stock inventory items
+ *     description: Returns all active inventory items whose quantity on hand is less than or equal to their reorder level.
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *     responses:
+ *       200:
+ *         description: Low stock inventory items returned successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               items:
+ *                 - publicId: 955a55bd-3732-4b85-8ca9-fc399bae9b90
+ *                   name: Anthrax Vaccine
+ *                   category: vaccine
+ *                   unit: dose
+ *                   sku: VAC-001
+ *                   description: Used for anthrax prevention
+ *                   quantityOnHand: 12
+ *                   reorderLevel: 30
+ *                   isLowStock: true
+ *                   isActive: true
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+    "/:slug/inventory-items/low-stock",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    listLowStockInventoryItems
 );
 
 /**

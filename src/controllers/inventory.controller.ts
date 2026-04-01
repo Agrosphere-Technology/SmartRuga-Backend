@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { Op } from "sequelize";
 import { StatusCodes } from "http-status-codes";
 import {
     sequelize,
@@ -178,6 +179,96 @@ export async function listInventoryItems(req: Request, res: Response) {
         console.error("LIST_INVENTORY_ITEMS_ERROR:", err);
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             message: "Failed to list inventory items",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}
+
+// Inventory Summary
+export async function getInventorySummary(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+
+        const [totalItems, activeItems, inactiveItems, lowStockItems] =
+            await Promise.all([
+                InventoryItem.count({
+                    where: {
+                        ranch_id: ranchId,
+                    },
+                }),
+                InventoryItem.count({
+                    where: {
+                        ranch_id: ranchId,
+                        is_active: true,
+                    },
+                }),
+                InventoryItem.count({
+                    where: {
+                        ranch_id: ranchId,
+                        is_active: false,
+                    },
+                }),
+                InventoryItem.count({
+                    where: {
+                        ranch_id: ranchId,
+                        is_active: true,
+                        quantity_on_hand: {
+                            [Op.lte]: sequelize.col("reorder_level"),
+                        },
+                    },
+                }),
+            ]);
+
+        return res.status(StatusCodes.OK).json({
+            summary: {
+                totalItems,
+                activeItems,
+                inactiveItems,
+                lowStockItems,
+            },
+        });
+    } catch (err: any) {
+        console.error("GET_INVENTORY_SUMMARY_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to fetch inventory summary",
+            error: err?.message ?? "Unknown error",
+        });
+    }
+}
+
+// Low Stock Inventory Items
+export async function listLowStockInventoryItems(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+
+        const items = await InventoryItem.findAll({
+            where: {
+                ranch_id: ranchId,
+                is_active: true,
+                quantity_on_hand: {
+                    [Op.lte]: sequelize.col("reorder_level"),
+                },
+            },
+            include: [
+                {
+                    model: User,
+                    as: "createdByUser",
+                },
+                {
+                    model: User,
+                    as: "updatedByUser",
+                },
+            ],
+            order: [["updated_at", "ASC"]],
+        });
+
+        return res.status(StatusCodes.OK).json({
+            items: items.map((item) => formatInventoryItem(item)),
+        });
+    } catch (err: any) {
+        console.error("LIST_LOW_STOCK_INVENTORY_ITEMS_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Failed to fetch low stock inventory items",
             error: err?.message ?? "Unknown error",
         });
     }
