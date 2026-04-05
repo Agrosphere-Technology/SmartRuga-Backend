@@ -6,6 +6,7 @@ import {
     addDays,
     AnimalStatsRow,
     buildDashboardActivity,
+    DashboardInventoryStatsRow,
     endOfDay,
     RecentActivityRow,
     startOfDay,
@@ -136,6 +137,26 @@ export async function getRanchDashboard(req: Request, res: Response) {
                 }
             );
 
+        const inventoryStatsPromise = sequelize.query<DashboardInventoryStatsRow>(
+            `
+            SELECT
+                COUNT(*)::text AS total,
+                COUNT(*) FILTER (WHERE i.is_active = true)::text AS active,
+                COUNT(*) FILTER (WHERE i.is_active = false)::text AS inactive,
+                COUNT(*) FILTER (
+                    WHERE i.is_active = true
+                      AND i.quantity_on_hand <= i.reorder_level
+                )::text AS low_stock,
+                COALESCE(SUM(i.quantity_on_hand), 0)::text AS total_quantity_on_hand
+            FROM inventory_items i
+            WHERE i.ranch_id = $1
+            `,
+            {
+                bind: [ranchId],
+                type: QueryTypes.SELECT,
+            }
+        );
+
         const recentActivityPromise = canManage
             ? sequelize.query<RecentActivityRow>(
                 `
@@ -155,7 +176,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         NULL::text AS vaccine_name,
                         NULL::uuid AS task_public_id,
                         NULL::text AS task_title,
-                        NULL::text AS review_status
+                        NULL::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM animal_health_events e
                     JOIN animals a ON a.id = e.animal_id
                     WHERE a.ranch_id = $1
@@ -176,7 +203,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         NULL::text AS vaccine_name,
                         NULL::uuid AS task_public_id,
                         NULL::text AS task_title,
-                        NULL::text AS review_status
+                        NULL::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM animal_activity_events ev
                     JOIN animals a ON a.id = ev.animal_id
                     WHERE a.ranch_id = $1
@@ -197,7 +230,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         NULL::text AS vaccine_name,
                         NULL::uuid AS task_public_id,
                         NULL::text AS task_title,
-                        NULL::text AS review_status
+                        NULL::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM animal_movement_events m
                     JOIN animals a ON a.id = m.animal_id
                     WHERE a.ranch_id = $1
@@ -218,7 +257,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         v.vaccine_name::text AS vaccine_name,
                         NULL::uuid AS task_public_id,
                         NULL::text AS task_title,
-                        NULL::text AS review_status
+                        NULL::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM animal_vaccinations v
                     JOIN animals a ON a.id = v.animal_id
                     WHERE a.ranch_id = $1
@@ -240,7 +285,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         NULL::text AS vaccine_name,
                         t.public_id AS task_public_id,
                         t.title AS task_title,
-                        NULL::text AS review_status
+                        NULL::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM tasks t
                     WHERE t.ranch_id = $1
 
@@ -260,7 +311,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         NULL::text AS vaccine_name,
                         t.public_id AS task_public_id,
                         t.title AS task_title,
-                        NULL::text AS review_status
+                        NULL::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM task_submissions ts
                     JOIN tasks t ON t.id = ts.task_id
                     WHERE t.ranch_id = $1
@@ -281,11 +338,44 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         NULL::text AS vaccine_name,
                         t.public_id AS task_public_id,
                         t.title AS task_title,
-                        ts.status::text AS review_status
+                        ts.status::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM task_submissions ts
                     JOIN tasks t ON t.id = ts.task_id
                     WHERE t.ranch_id = $1
                       AND ts.reviewed_at IS NOT NULL
+
+                    UNION ALL
+
+                    SELECT
+                        'inventory_movement'::text AS type,
+                        ism.public_id AS id,
+                        ism.created_at,
+                        NULL::uuid AS animal_public_id,
+                        NULL::text AS animal_tag_number,
+                        NULL::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        NULL::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        NULL::uuid AS task_public_id,
+                        NULL::text AS task_title,
+                        NULL::text AS review_status,
+                        ii.public_id AS inventory_item_public_id,
+                        ii.name AS inventory_item_name,
+                        ism.type::text AS inventory_movement_type,
+                        ism.quantity AS inventory_quantity,
+                        ism.previous_quantity AS inventory_previous_quantity,
+                        ism.new_quantity AS inventory_new_quantity
+                    FROM inventory_stock_movements ism
+                    JOIN inventory_items ii ON ii.id = ism.inventory_item_id
+                    WHERE ism.ranch_id = $1
                 ) t
                 ORDER BY created_at DESC
                 LIMIT 25
@@ -313,7 +403,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         NULL::text AS vaccine_name,
                         NULL::uuid AS task_public_id,
                         NULL::text AS task_title,
-                        NULL::text AS review_status
+                        NULL::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM animal_health_events e
                     JOIN animals a ON a.id = e.animal_id
                     WHERE a.ranch_id = $1
@@ -334,7 +430,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         NULL::text AS vaccine_name,
                         NULL::uuid AS task_public_id,
                         NULL::text AS task_title,
-                        NULL::text AS review_status
+                        NULL::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM animal_activity_events ev
                     JOIN animals a ON a.id = ev.animal_id
                     WHERE a.ranch_id = $1
@@ -355,7 +457,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         NULL::text AS vaccine_name,
                         NULL::uuid AS task_public_id,
                         NULL::text AS task_title,
-                        NULL::text AS review_status
+                        NULL::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM animal_movement_events m
                     JOIN animals a ON a.id = m.animal_id
                     WHERE a.ranch_id = $1
@@ -376,7 +484,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         v.vaccine_name::text AS vaccine_name,
                         NULL::uuid AS task_public_id,
                         NULL::text AS task_title,
-                        NULL::text AS review_status
+                        NULL::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM animal_vaccinations v
                     JOIN animals a ON a.id = v.animal_id
                     WHERE a.ranch_id = $1
@@ -398,7 +512,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         NULL::text AS vaccine_name,
                         t.public_id AS task_public_id,
                         t.title AS task_title,
-                        NULL::text AS review_status
+                        NULL::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM tasks t
                     WHERE t.ranch_id = $1
                       AND t.assigned_to_user_id = $2
@@ -419,7 +539,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         NULL::text AS vaccine_name,
                         t.public_id AS task_public_id,
                         t.title AS task_title,
-                        NULL::text AS review_status
+                        NULL::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM task_submissions ts
                     JOIN tasks t ON t.id = ts.task_id
                     WHERE t.ranch_id = $1
@@ -441,12 +567,45 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         NULL::text AS vaccine_name,
                         t.public_id AS task_public_id,
                         t.title AS task_title,
-                        ts.status::text AS review_status
+                        ts.status::text AS review_status,
+                        NULL::uuid AS inventory_item_public_id,
+                        NULL::text AS inventory_item_name,
+                        NULL::text AS inventory_movement_type,
+                        NULL::numeric AS inventory_quantity,
+                        NULL::numeric AS inventory_previous_quantity,
+                        NULL::numeric AS inventory_new_quantity
                     FROM task_submissions ts
                     JOIN tasks t ON t.id = ts.task_id
                     WHERE t.ranch_id = $1
                       AND t.assigned_to_user_id = $2
                       AND ts.reviewed_at IS NOT NULL
+
+                    UNION ALL
+
+                    SELECT
+                        'inventory_movement'::text AS type,
+                        ism.public_id AS id,
+                        ism.created_at,
+                        NULL::uuid AS animal_public_id,
+                        NULL::text AS animal_tag_number,
+                        NULL::text AS status,
+                        NULL::text AS field,
+                        NULL::text AS from_value,
+                        NULL::text AS to_value,
+                        NULL::text AS movement_type,
+                        NULL::text AS vaccine_name,
+                        NULL::uuid AS task_public_id,
+                        NULL::text AS task_title,
+                        NULL::text AS review_status,
+                        ii.public_id AS inventory_item_public_id,
+                        ii.name AS inventory_item_name,
+                        ism.type::text AS inventory_movement_type,
+                        ism.quantity AS inventory_quantity,
+                        ism.previous_quantity AS inventory_previous_quantity,
+                        ism.new_quantity AS inventory_new_quantity
+                    FROM inventory_stock_movements ism
+                    JOIN inventory_items ii ON ii.id = ism.inventory_item_id
+                    WHERE ism.ranch_id = $1
                 ) t
                 ORDER BY created_at DESC
                 LIMIT 25
@@ -461,12 +620,14 @@ export async function getRanchDashboard(req: Request, res: Response) {
             animalStatsResult,
             taskStatsResult,
             submissionApprovalStatsResult,
+            inventoryStatsResult,
             recentActivityRows,
             vaccinationRows,
         ] = await Promise.all([
             animalStatsPromise,
             taskStatsPromise,
             submissionApprovalStatsPromise,
+            inventoryStatsPromise,
             recentActivityPromise,
             vaccinationRowsPromise,
         ]);
@@ -474,6 +635,7 @@ export async function getRanchDashboard(req: Request, res: Response) {
         const [animalStats] = animalStatsResult;
         const [taskStats] = taskStatsResult;
         const [submissionApprovalStats] = submissionApprovalStatsResult;
+        const [inventoryStats] = inventoryStatsResult;
 
         let overdue = 0;
         let dueToday = 0;
@@ -520,6 +682,15 @@ export async function getRanchDashboard(req: Request, res: Response) {
                 pending: Number(submissionApprovalStats?.pending ?? 0),
                 approved: Number(submissionApprovalStats?.approved ?? 0),
                 rejected: Number(submissionApprovalStats?.rejected ?? 0),
+            },
+            inventory: {
+                totalItems: Number(inventoryStats?.total ?? 0),
+                activeItems: Number(inventoryStats?.active ?? 0),
+                inactiveItems: Number(inventoryStats?.inactive ?? 0),
+                lowStockItems: Number(inventoryStats?.low_stock ?? 0),
+                totalQuantityOnHand: Number(
+                    inventoryStats?.total_quantity_on_hand ?? 0
+                ),
             },
             recentActivity,
         });

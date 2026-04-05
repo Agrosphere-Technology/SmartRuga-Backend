@@ -6,6 +6,14 @@ export type AnimalStatsRow = {
     sick: string;
 };
 
+export type DashboardInventoryStatsRow = {
+    total: string;
+    active: string;
+    inactive: string;
+    low_stock: string;
+    total_quantity_on_hand: string;
+};
+
 export type RecentActivityRow = {
     type:
     | "health"
@@ -14,7 +22,8 @@ export type RecentActivityRow = {
     | "vaccination"
     | "task_created"
     | "task_submission"
-    | "task_review";
+    | "task_review"
+    | "inventory_movement";
     id: string;
     created_at: Date;
     animal_public_id: string | null;
@@ -28,6 +37,12 @@ export type RecentActivityRow = {
     task_public_id: string | null;
     task_title: string | null;
     review_status: string | null;
+    inventory_item_public_id: string | null;
+    inventory_item_name: string | null;
+    inventory_movement_type: string | null;
+    inventory_quantity: string | number | null;
+    inventory_previous_quantity: string | number | null;
+    inventory_new_quantity: string | number | null;
 };
 
 export type DashboardActivityItem = {
@@ -38,13 +53,16 @@ export type DashboardActivityItem = {
     | "vaccination"
     | "task_created"
     | "task_submission"
-    | "task_review";
+    | "task_review"
+    | "inventory_movement";
     id: string;
     createdAt: Date;
     animalPublicId: string | null;
     animalTagNumber: string | null;
     taskPublicId?: string | null;
     taskTitle?: string | null;
+    inventoryItemPublicId?: string | null;
+    inventoryItemName?: string | null;
     title: string;
     description: string;
     changes?: Array<{
@@ -109,6 +127,26 @@ export function buildDashboardActivity(items: RecentActivityRow[]): DashboardAct
         } else if (item.type === "task_review") {
             title = "Task submission reviewed";
             description = `Submission for task "${item.task_title}" was ${item.review_status}`;
+        } else if (item.type === "inventory_movement") {
+            const movementType = item.inventory_movement_type ?? "movement";
+            const itemName = item.inventory_item_name ?? "Inventory item";
+            const quantity = Number(item.inventory_quantity ?? 0);
+            const previousQuantity = Number(item.inventory_previous_quantity ?? 0);
+            const newQuantity = Number(item.inventory_new_quantity ?? 0);
+
+            if (movementType === "stock_in") {
+                title = "Inventory stocked in";
+                description = `${quantity} added to ${itemName} (${previousQuantity} → ${newQuantity})`;
+            } else if (movementType === "stock_out") {
+                title = "Inventory stocked out";
+                description = `${quantity} removed from ${itemName} (${previousQuantity} → ${newQuantity})`;
+            } else if (movementType === "adjustment") {
+                title = "Inventory adjusted";
+                description = `${itemName} adjusted from ${previousQuantity} to ${newQuantity}`;
+            } else {
+                title = "Inventory movement recorded";
+                description = `${movementType} recorded for ${itemName}`;
+            }
         }
 
         grouped.push({
@@ -119,6 +157,8 @@ export function buildDashboardActivity(items: RecentActivityRow[]): DashboardAct
             animalTagNumber: item.animal_tag_number,
             taskPublicId: item.task_public_id,
             taskTitle: item.task_title,
+            inventoryItemPublicId: item.inventory_item_public_id,
+            inventoryItemName: item.inventory_item_name,
             title,
             description,
         });
@@ -161,7 +201,6 @@ export function addDays(date: Date, days: number) {
     d.setDate(d.getDate() + days);
     return d;
 }
-
 
 export type TaskStatsRow = {
     total: string;
