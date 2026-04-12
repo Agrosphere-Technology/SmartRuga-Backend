@@ -1,11 +1,10 @@
 import z from "zod";
 
-export const listAlertsQuerySchema = z.object({
+export const listRanchAlertsQuerySchema = z.object({
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
 
-    // supports: ?type=health_sick OR ?type=health_sick,status_sold
-    type: z
+    alertType: z
         .string()
         .optional()
         .transform((v) => {
@@ -17,7 +16,6 @@ export const listAlertsQuerySchema = z.object({
             return parts.length ? parts : undefined;
         }),
 
-    // supports: ?unread=true / false
     unread: z
         .string()
         .optional()
@@ -27,8 +25,12 @@ export const listAlertsQuerySchema = z.object({
             if (v === "false") return false;
             return undefined;
         }),
-});
 
+    animalId: z.string().uuid().optional(),
+
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+});
 
 export const bulkReadSchema = z
     .object({

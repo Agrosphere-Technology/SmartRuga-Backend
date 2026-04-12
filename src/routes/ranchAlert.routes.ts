@@ -1,3 +1,16 @@
+import { Router } from "express";
+import { requireAuth } from "../middlewares/auth";
+import { requireRanchAccess } from "../middlewares/ranchAccess";
+import {
+    getUnreadRanchAlertsCount,
+    listRanchAlerts,
+    markAlertRead,
+    markAlertsReadBulk,
+    markAllRanchAlertsAsRead,
+} from "../controllers/ranchAlert.controller";
+
+const router = Router({ mergeParams: true });
+
 /**
  * @openapi
  * /api/v1/ranches/{slug}/alerts:
@@ -19,12 +32,12 @@
  *         schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
  *       - in: query
  *         name: unread
- *         description: Filter read/unread
+ *         description: Filter unread/read
  *         schema: { type: boolean }
  *       - in: query
  *         name: alertType
  *         schema: { type: string }
- *         description: e.g health_sick, health_quarantined, status_sold, status_deceased
+ *         description: e.g health_sick,status_sold,low_stock
  *       - in: query
  *         name: animalId
  *         schema: { type: string, format: uuid }
@@ -41,6 +54,35 @@
  *       401: { description: Unauthorized }
  *       403: { description: Forbidden }
  */
+router.get(
+    "/:slug/alerts",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    listRanchAlerts
+);
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/alerts/unread-count:
+ *   get:
+ *     tags: [Alerts]
+ *     summary: Get unread alerts count
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: OK }
+ */
+router.get(
+    "/:slug/alerts/unread-count",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    getUnreadRanchAlertsCount
+);
 
 /**
  * @openapi
@@ -61,17 +103,21 @@
  *         schema: { type: string, format: uuid }
  *     responses:
  *       200: { description: OK }
- *       401: { description: Unauthorized }
- *       403: { description: Forbidden }
  *       404: { description: Alert not found }
  */
+router.patch(
+    "/:slug/alerts/:alertId/read",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    markAlertRead
+);
 
 /**
  * @openapi
  * /api/v1/ranches/{slug}/alerts/read:
  *   patch:
  *     tags: [Alerts]
- *     summary: Bulk mark alerts as read
+ *     summary: Bulk mark selected alerts as read
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -95,37 +141,35 @@
  *     responses:
  *       200: { description: OK }
  *       400: { description: Invalid payload }
- *       401: { description: Unauthorized }
- *       403: { description: Forbidden }
  */
-
-
-import { Router } from "express";
-import { requireAuth } from "../middlewares/auth";
-import { requireRanchAccess } from "../middlewares/ranchAccess";
-import { listRanchAlerts, markAlertRead, markAlertsReadBulk } from "../controllers/ranchAlert.controller";
-
-const router = Router({ mergeParams: true });
-
-router.get(
-    "/:slug/alerts",
-    requireAuth(),
-    requireRanchAccess("slug"),
-    listRanchAlerts
-);
-
-
-router.patch(
-    "/:slug/alerts/:alertId/read",
-    requireAuth(),
-    requireRanchAccess("slug"),
-    markAlertRead
-);
-
 router.patch(
     "/:slug/alerts/read",
     requireAuth(),
     requireRanchAccess("slug"),
     markAlertsReadBulk
 );
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/alerts/read-all:
+ *   patch:
+ *     tags: [Alerts]
+ *     summary: Mark all unread alerts as read
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: OK }
+ */
+router.patch(
+    "/:slug/alerts/read-all",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    markAllRanchAlertsAsRead
+);
+
 export default router;

@@ -146,6 +146,28 @@ RanchAlert.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 Animal.hasMany(Vaccination, { foreignKey: "animal_id", as: "vaccinations" });
 Vaccination.belongsTo(Animal, { foreignKey: "animal_id", as: "animal" });
 
+
+RanchAlert.belongsTo(Animal, {
+  foreignKey: "animal_id",
+  as: "animal",
+});
+
+RanchAlert.belongsTo(User, {
+  foreignKey: "read_by",
+  as: "readByUser",
+});
+
+
+Animal.hasMany(RanchAlert, {
+  foreignKey: "animal_id",
+  as: "alerts",
+});
+
+User.hasMany(RanchAlert, {
+  foreignKey: "read_by",
+  as: "readAlerts",
+});
+
 // Animal ↔ AnimalMovementEvent
 
 Animal.hasMany(AnimalMovementEvent, {
