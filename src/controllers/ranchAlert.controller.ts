@@ -15,6 +15,7 @@ import {
 export async function listRanchAlerts(req: Request, res: Response) {
     try {
         const requesterRole = req.membership!.ranchRole;
+
         if (!canViewAlerts(requesterRole)) {
             return res.status(StatusCodes.FORBIDDEN).json({
                 message: "Only owner/manager/vet can view ranch alerts",
@@ -24,7 +25,6 @@ export async function listRanchAlerts(req: Request, res: Response) {
         const ranchId = req.ranch!.id;
 
         const parsed = listRanchAlertsQuerySchema.safeParse(req.query);
-
         if (!parsed.success) {
             return res.status(StatusCodes.BAD_REQUEST).json({
                 message: "Validation failed",
@@ -32,15 +32,7 @@ export async function listRanchAlerts(req: Request, res: Response) {
             });
         }
 
-        const {
-            page,
-            limit,
-            unread,
-            alertType,
-            animalId,
-            from,
-            to,
-        } = parsed.data;
+        const { page, limit, unread, alertType, animalId, from, to } = parsed.data;
 
         const offset = (page - 1) * limit;
 
@@ -49,7 +41,7 @@ export async function listRanchAlerts(req: Request, res: Response) {
         };
 
         if (typeof unread === "boolean") {
-            whereClause.is_read = unread ? false : true;
+            whereClause.is_read = !unread ? true : false;
         }
 
         if (alertType?.length) {
@@ -64,11 +56,13 @@ export async function listRanchAlerts(req: Request, res: Response) {
 
         if (from || to) {
             whereClause.created_at = {};
+
             if (from) {
-                whereClause.created_at[Op.gte] = new Date(from);
+                whereClause.created_at[Op.gte] = new Date(`${from}T00:00:00.000Z`);
             }
+
             if (to) {
-                whereClause.created_at[Op.lte] = new Date(to);
+                whereClause.created_at[Op.lt] = new Date(`${to}T23:59:59.999Z`);
             }
         }
 
@@ -126,6 +120,7 @@ export async function listRanchAlerts(req: Request, res: Response) {
 export async function getUnreadRanchAlertsCount(req: Request, res: Response) {
     try {
         const requesterRole = req.membership!.ranchRole;
+
         if (!canViewAlerts(requesterRole)) {
             return res.status(StatusCodes.FORBIDDEN).json({
                 message: "Only owner/manager/vet can view ranch alerts",
@@ -156,6 +151,7 @@ export async function getUnreadRanchAlertsCount(req: Request, res: Response) {
 export async function markAlertRead(req: Request, res: Response) {
     try {
         const requesterRole = req.membership!.ranchRole;
+
         if (!canManageAlerts(requesterRole)) {
             return res.status(StatusCodes.FORBIDDEN).json({
                 message: "Only owner/manager/vet can update alerts",
@@ -201,7 +197,7 @@ export async function markAlertRead(req: Request, res: Response) {
 
             return res.status(StatusCodes.OK).json({
                 message: "Alert already marked as read",
-                alert: formatRanchAlert(existingAlert),
+                alert: existingAlert ? formatRanchAlert(existingAlert) : null,
             });
         }
 
@@ -209,6 +205,7 @@ export async function markAlertRead(req: Request, res: Response) {
             is_read: true,
             read_at: new Date(),
             read_by: userId,
+            updated_at: new Date(),
         });
 
         const updatedAlert = await RanchAlert.findOne({
@@ -232,7 +229,7 @@ export async function markAlertRead(req: Request, res: Response) {
 
         return res.status(StatusCodes.OK).json({
             message: "Alert marked as read successfully",
-            alert: formatRanchAlert(updatedAlert),
+            alert: updatedAlert ? formatRanchAlert(updatedAlert) : null,
         });
     } catch (err: any) {
         console.error("MARK_RANCH_ALERT_AS_READ_ERROR:", err);
@@ -246,6 +243,7 @@ export async function markAlertRead(req: Request, res: Response) {
 export async function markAlertsReadBulk(req: Request, res: Response) {
     try {
         const requesterRole = req.membership!.ranchRole;
+
         if (!canManageAlerts(requesterRole)) {
             return res.status(StatusCodes.FORBIDDEN).json({
                 message: "Only owner/manager/vet can update alerts",
@@ -256,7 +254,6 @@ export async function markAlertsReadBulk(req: Request, res: Response) {
         const userId = req.user!.id;
 
         const parsed = bulkReadSchema.safeParse(req.body);
-
         if (!parsed.success) {
             return res.status(StatusCodes.BAD_REQUEST).json({
                 message: "Validation failed",
@@ -271,6 +268,7 @@ export async function markAlertsReadBulk(req: Request, res: Response) {
                 is_read: true,
                 read_at: new Date(),
                 read_by: userId,
+                updated_at: new Date(),
             },
             {
                 where: {
@@ -278,6 +276,7 @@ export async function markAlertsReadBulk(req: Request, res: Response) {
                     public_id: {
                         [Op.in]: alertIds,
                     },
+                    is_read: false,
                 },
             }
         );
@@ -298,6 +297,7 @@ export async function markAlertsReadBulk(req: Request, res: Response) {
 export async function markAllRanchAlertsAsRead(req: Request, res: Response) {
     try {
         const requesterRole = req.membership!.ranchRole;
+
         if (!canManageAlerts(requesterRole)) {
             return res.status(StatusCodes.FORBIDDEN).json({
                 message: "Only owner/manager/vet can update alerts",
@@ -312,6 +312,7 @@ export async function markAllRanchAlertsAsRead(req: Request, res: Response) {
                 is_read: true,
                 read_at: new Date(),
                 read_by: userId,
+                updated_at: new Date(),
             },
             {
                 where: {

@@ -358,11 +358,7 @@ export async function getInventoryDashboard(req: Request, res: Response) {
                 where: { ranch_id: ranchId },
                 attributes: [
                     [
-                        fn(
-                            "COALESCE",
-                            fn("SUM", col("quantity_on_hand")),
-                            0
-                        ),
+                        fn("COALESCE", fn("SUM", col("quantity_on_hand")), 0),
                         "total_quantity_on_hand",
                     ],
                 ],
@@ -377,11 +373,7 @@ export async function getInventoryDashboard(req: Request, res: Response) {
                     "category",
                     [fn("COUNT", col("id")), "count"],
                     [
-                        fn(
-                            "COALESCE",
-                            fn("SUM", col("quantity_on_hand")),
-                            0
-                        ),
+                        fn("COALESCE", fn("SUM", col("quantity_on_hand")), 0),
                         "totalQuantityOnHand",
                     ],
                 ],
@@ -445,10 +437,8 @@ export async function listRecentInventoryMovements(req: Request, res: Response) 
 
         return res.status(StatusCodes.OK).json({
             movements: movements.map((movement: any) => {
-                const recordedByUser =
-                    movement.get("recordedByUser") ?? null;
-                const inventoryItem =
-                    movement.get("inventoryItem") ?? null;
+                const recordedByUser = movement.get("recordedByUser") ?? null;
+                const inventoryItem = movement.get("inventoryItem") ?? null;
 
                 return {
                     publicId: pickValue(movement, ["public_id", "publicId"]),
@@ -712,6 +702,11 @@ export async function recordStockMovement(req: Request, res: Response) {
         }
 
         const previous = Number(item.getDataValue("quantity_on_hand"));
+        const reorderLevel = Number(item.getDataValue("reorder_level"));
+        const itemName = String(item.getDataValue("name"));
+        const itemPublicIdResolved = String(item.getDataValue("public_id"));
+        const itemInternalId = String(item.getDataValue("id"));
+
         let newQuantity = previous;
 
         if (validated.type === "stock_in") {
@@ -743,7 +738,7 @@ export async function recordStockMovement(req: Request, res: Response) {
 
         const createdMovement = await InventoryStockMovement.create(
             {
-                inventory_item_id: item.getDataValue("id"),
+                inventory_item_id: itemInternalId,
                 ranch_id: ranchId,
                 type: validated.type,
                 quantity: validated.quantity,
@@ -759,17 +754,20 @@ export async function recordStockMovement(req: Request, res: Response) {
 
         await transaction.commit();
 
-        const reorderLevel = Number(item.getDataValue("reorder_level"));
+        const crossedIntoLowStock =
+            previous > reorderLevel && newQuantity <= reorderLevel;
 
-        if (newQuantity <= reorderLevel) {
+        if (crossedIntoLowStock) {
             await createRanchAlert({
                 ranchId,
                 alertType: "low_stock",
                 title: "Low stock alert",
-                message: `${item.getDataValue("name")} is low on stock (${newQuantity} remaining)`,
+                message: `${itemName} is low on stock (${newQuantity} remaining, reorder level: ${reorderLevel})`,
                 priority: "high",
                 entityType: "inventory_item",
-                entityPublicId: String(item.getDataValue("public_id")),
+                entityPublicId: itemPublicIdResolved,
+                dedupe: true,
+                dedupeMinutes: 60,
             });
         }
 
@@ -777,9 +775,7 @@ export async function recordStockMovement(req: Request, res: Response) {
             where: {
                 id: createdMovement.getDataValue("id"),
             },
-            include: [
-                { model: User, as: "recordedByUser" },
-            ],
+            include: [{ model: User, as: "recordedByUser" }],
         });
 
         const recordedByUser = movement?.get("recordedByUser") ?? null;
@@ -806,7 +802,7 @@ export async function recordStockMovement(req: Request, res: Response) {
                 recordedByUser: formatUser(recordedByUser),
             },
             item: {
-                publicId: item.getDataValue("public_id"),
+                publicId: itemPublicIdResolved,
                 quantityOnHand: newQuantity,
             },
         });
@@ -843,9 +839,7 @@ export async function listStockMovements(req: Request, res: Response) {
             where: {
                 inventory_item_id: item.getDataValue("id"),
             },
-            include: [
-                { model: User, as: "recordedByUser" },
-            ],
+            include: [{ model: User, as: "recordedByUser" }],
             order: [["created_at", "DESC"]],
         });
 

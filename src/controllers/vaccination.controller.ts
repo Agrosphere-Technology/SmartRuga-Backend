@@ -8,6 +8,7 @@ import {
     updateVaccinationSchema,
 } from "../validators/vaccination.validator";
 import { createRanchAlert } from "../services/ranchAlert.service";
+import { RANCH_ROLES } from "../constants/roles";
 
 function startOfDay(date: Date) {
     const d = new Date(date);
@@ -29,11 +30,37 @@ function addDays(date: Date, days: number) {
 
 function diffInDays(from: Date, to: Date) {
     const msPerDay = 1000 * 60 * 60 * 24;
-    return Math.floor((startOfDay(to).getTime() - startOfDay(from).getTime()) / msPerDay);
+    return Math.floor(
+        (startOfDay(to).getTime() - startOfDay(from).getTime()) / msPerDay
+    );
+}
+
+function canManageVaccinations(role?: string | null) {
+    return (
+        role === RANCH_ROLES.OWNER ||
+        role === RANCH_ROLES.MANAGER ||
+        role === RANCH_ROLES.VET
+    );
+}
+
+function canViewVaccinations(role?: string | null) {
+    return (
+        role === RANCH_ROLES.OWNER ||
+        role === RANCH_ROLES.MANAGER ||
+        role === RANCH_ROLES.VET
+    );
 }
 
 export async function createAnimalVaccination(req: Request, res: Response) {
     try {
+        const role = req.membership?.ranchRole;
+
+        if (!canManageVaccinations(role)) {
+            return res.status(StatusCodes.FORBIDDEN).json({
+                message: "Not allowed to create vaccination",
+            });
+        }
+
         const parsed = createVaccinationSchema.safeParse(req.body);
         if (!parsed.success) {
             return res.status(StatusCodes.BAD_REQUEST).json({
@@ -48,6 +75,7 @@ export async function createAnimalVaccination(req: Request, res: Response) {
 
         const animal = await Animal.findOne({
             where: { public_id: animalPublicId, ranch_id: ranchId },
+            attributes: ["id", "public_id", "tag_number"],
         } as any);
 
         if (!animal) {
@@ -68,8 +96,6 @@ export async function createAnimalVaccination(req: Request, res: Response) {
             administered_by: userId,
             notes: v.notes ?? null,
             created_at: new Date(),
-            updated_at: null,
-            updated_by: null,
             deleted_at: null,
             deleted_by: null,
             delete_reason: null,
@@ -87,10 +113,13 @@ export async function createAnimalVaccination(req: Request, res: Response) {
                 priority: "high",
                 entityType: "vaccination",
                 entityPublicId: String(vaccination.get("public_id")),
+                dedupe: true,
+                dedupeMinutes: 1440,
             });
         }
 
         return res.status(StatusCodes.CREATED).json({
+            message: "Vaccination created successfully",
             vaccination: {
                 publicId: vaccination.get("public_id"),
                 vaccineName: vaccination.get("vaccine_name"),
@@ -111,11 +140,20 @@ export async function createAnimalVaccination(req: Request, res: Response) {
 
 export async function listAnimalVaccinations(req: Request, res: Response) {
     try {
+        const role = req.membership?.ranchRole;
+
+        if (!canViewVaccinations(role)) {
+            return res.status(StatusCodes.FORBIDDEN).json({
+                message: "Not allowed to view vaccinations",
+            });
+        }
+
         const ranchId = req.ranch!.id;
         const animalPublicId = req.params.publicId;
 
         const animal = await Animal.findOne({
             where: { public_id: animalPublicId, ranch_id: ranchId },
+            attributes: ["id", "public_id", "tag_number"],
         } as any);
 
         if (!animal) {
@@ -154,11 +192,20 @@ export async function listAnimalVaccinations(req: Request, res: Response) {
 
 export async function getAnimalVaccination(req: Request, res: Response) {
     try {
+        const role = req.membership?.ranchRole;
+
+        if (!canViewVaccinations(role)) {
+            return res.status(StatusCodes.FORBIDDEN).json({
+                message: "Not allowed to view vaccination",
+            });
+        }
+
         const ranchId = req.ranch!.id;
         const { publicId, vaccinationPublicId } = req.params;
 
         const animal = await Animal.findOne({
             where: { public_id: publicId, ranch_id: ranchId },
+            attributes: ["id", "public_id", "tag_number"],
         } as any);
 
         if (!animal) {
@@ -203,8 +250,17 @@ export async function getAnimalVaccination(req: Request, res: Response) {
 
 export async function listVaccinationAlerts(req: Request, res: Response) {
     try {
+        const role = req.membership?.ranchRole;
+
+        if (!canViewVaccinations(role)) {
+            return res.status(StatusCodes.FORBIDDEN).json({
+                message: "Not allowed to view vaccination alerts",
+            });
+        }
+
         const ranchId = req.ranch!.id;
-        const dueSoonDays = Math.max(1, Number(req.query.dueSoonDays ?? 7));
+        const rawDueSoonDays = Number(req.query.dueSoonDays ?? 7);
+        const dueSoonDays = Math.min(30, Math.max(1, rawDueSoonDays || 7));
 
         const now = new Date();
         const todayStart = startOfDay(now);
@@ -301,6 +357,14 @@ export async function listVaccinationAlerts(req: Request, res: Response) {
 
 export async function updateAnimalVaccination(req: Request, res: Response) {
     try {
+        const role = req.membership?.ranchRole;
+
+        if (!canManageVaccinations(role)) {
+            return res.status(StatusCodes.FORBIDDEN).json({
+                message: "Not allowed to update vaccination",
+            });
+        }
+
         const parsed = updateVaccinationSchema.safeParse(req.body);
 
         if (!parsed.success) {
@@ -316,6 +380,7 @@ export async function updateAnimalVaccination(req: Request, res: Response) {
 
         const animal = await Animal.findOne({
             where: { public_id: publicId, ranch_id: ranchId },
+            attributes: ["id", "public_id", "tag_number"],
         } as any);
 
         if (!animal) {
@@ -373,6 +438,8 @@ export async function updateAnimalVaccination(req: Request, res: Response) {
                 priority: "high",
                 entityType: "vaccination",
                 entityPublicId: String(vaccination.get("public_id")),
+                dedupe: true,
+                dedupeMinutes: 1440,
             });
         }
 
@@ -401,10 +468,9 @@ export async function deleteAnimalVaccination(req: Request, res: Response) {
         const ranchId = req.ranch!.id;
         const userId = req.user!.id;
         const { publicId, vaccinationPublicId } = req.params;
-
         const role = req.membership?.ranchRole;
 
-        if (!role || !["owner", "manager", "vet"].includes(role)) {
+        if (!canManageVaccinations(role)) {
             return res.status(StatusCodes.FORBIDDEN).json({
                 message: "Not allowed to delete vaccination",
             });
@@ -420,6 +486,7 @@ export async function deleteAnimalVaccination(req: Request, res: Response) {
 
         const animal = await Animal.findOne({
             where: { public_id: publicId, ranch_id: ranchId },
+            attributes: ["id", "public_id", "tag_number"],
         } as any);
 
         if (!animal) {
