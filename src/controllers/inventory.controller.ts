@@ -13,6 +13,7 @@ import {
     updateInventoryItemSchema,
 } from "../validators/inventory.validator";
 import { ALLOWED_INVENTORY_MANAGERS } from "../helpers/inventory.helpers";
+import { createRanchAlert } from "../services/ranchAlert.service";
 
 function pickValue(obj: any, keys: string[]) {
     if (!obj) return null;
@@ -757,6 +758,20 @@ export async function recordStockMovement(req: Request, res: Response) {
         );
 
         await transaction.commit();
+
+        const reorderLevel = Number(item.getDataValue("reorder_level"));
+
+        if (newQuantity <= reorderLevel) {
+            await createRanchAlert({
+                ranchId,
+                alertType: "low_stock",
+                title: "Low stock alert",
+                message: `${item.getDataValue("name")} is low on stock (${newQuantity} remaining)`,
+                priority: "high",
+                entityType: "inventory_item",
+                entityPublicId: String(item.getDataValue("public_id")),
+            });
+        }
 
         const movement = await InventoryStockMovement.findOne({
             where: {

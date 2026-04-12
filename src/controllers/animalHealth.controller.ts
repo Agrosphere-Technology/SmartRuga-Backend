@@ -162,7 +162,14 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
                     ranchId,
                     animalId,
                     alertType,
+                    title:
+                        event.status === "sick"
+                            ? "Animal health alert"
+                            : "Animal quarantine alert",
                     message: msg,
+                    priority: "high",
+                    entityType: "animal",
+                    entityPublicId: String(animal.get("public_id")),
                     transaction: t,
                 });
             }

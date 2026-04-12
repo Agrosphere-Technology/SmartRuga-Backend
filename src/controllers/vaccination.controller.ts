@@ -7,6 +7,7 @@ import {
     deleteVaccinationSchema,
     updateVaccinationSchema,
 } from "../validators/vaccination.validator";
+import { createRanchAlert } from "../services/ranchAlert.service";
 
 function startOfDay(date: Date) {
     const d = new Date(date);
@@ -73,6 +74,21 @@ export async function createAnimalVaccination(req: Request, res: Response) {
             deleted_by: null,
             delete_reason: null,
         } as any);
+
+        const nextDueAt = vaccination.get("next_due_at") as Date | null;
+
+        if (nextDueAt && nextDueAt < new Date()) {
+            await createRanchAlert({
+                ranchId,
+                animalId: String(animal.get("id")),
+                alertType: "vaccination_overdue",
+                title: "Vaccination overdue alert",
+                message: `${vaccination.get("vaccine_name")} for animal ${animal.get("tag_number")} is overdue`,
+                priority: "high",
+                entityType: "vaccination",
+                entityPublicId: String(vaccination.get("public_id")),
+            });
+        }
 
         return res.status(StatusCodes.CREATED).json({
             vaccination: {
@@ -344,6 +360,21 @@ export async function updateAnimalVaccination(req: Request, res: Response) {
             updated_at: new Date(),
             updated_by: userId,
         });
+
+        const nextDueAt = vaccination.get("next_due_at") as Date | null;
+
+        if (nextDueAt && nextDueAt < new Date()) {
+            await createRanchAlert({
+                ranchId,
+                animalId: String(animal.get("id")),
+                alertType: "vaccination_overdue",
+                title: "Vaccination overdue alert",
+                message: `${vaccination.get("vaccine_name")} for animal ${animal.get("tag_number")} is overdue`,
+                priority: "high",
+                entityType: "vaccination",
+                entityPublicId: String(vaccination.get("public_id")),
+            });
+        }
 
         return res.status(StatusCodes.OK).json({
             message: "Vaccination updated successfully",
