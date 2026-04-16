@@ -11,7 +11,6 @@ export function AnimalFactory(sequelize: Sequelize) {
         defaultValue: DataTypes.UUIDV4,
       },
 
-      // QR-safe public identifier
       public_id: {
         type: DataTypes.UUID,
         allowNull: false,
@@ -39,7 +38,6 @@ export function AnimalFactory(sequelize: Sequelize) {
         allowNull: true,
       },
 
-      // RFID / electronic tag identifier
       rfid_tag: {
         type: DataTypes.STRING(100),
         allowNull: true,
@@ -71,6 +69,16 @@ export function AnimalFactory(sequelize: Sequelize) {
         type: DataTypes.ENUM("active", "sold", "deceased"),
         allowNull: false,
         defaultValue: "active",
+      },
+
+      image_url: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+
+      image_public_id: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
       },
     },
     {

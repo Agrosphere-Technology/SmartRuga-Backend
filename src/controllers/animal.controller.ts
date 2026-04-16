@@ -2,7 +2,6 @@ import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import {
   Animal,
-  AnimalHealthEvent,
   AnimalActivityEvent,
   sequelize,
   Species,
@@ -19,6 +18,10 @@ import {
   bulkAnimalLookupSchema,
 } from "../validators/animalLookup.validator";
 import { createRanchAlert } from "../services/ranchAlert.service";
+import {
+  uploadBufferToCloudinary,
+  deleteFromCloudinary,
+} from "../services/cloudinary.service";
 import { errorResponse, successResponse } from "../utils/apiResponse";
 
 type LatestHealthRow = {
@@ -41,7 +44,6 @@ type InsertedStatusEventRow = {
 function canTransition(from: StatusEnum, to: StatusEnum) {
   if (from === to) return true;
   if (from === "active" && (to === "sold" || to === "deceased")) return true;
-
   return false;
 }
 
@@ -55,6 +57,8 @@ function mapAnimalLookupResponse(animal: any) {
     sex: animal.get("sex"),
     dateOfBirth: animal.get("date_of_birth"),
     status: animal.get("status"),
+    imageUrl: animal.get("image_url"),
+    imagePublicId: animal.get("image_public_id"),
     species: (animal as any).species
       ? {
         id: (animal as any).species.id,
@@ -83,7 +87,17 @@ export async function createAnimal(req: Request, res: Response) {
       );
     }
 
-    const { speciesId, tagNumber, rfidTag, sex, dateOfBirth, breed, weight } = req.body;
+    const {
+      speciesId,
+      tagNumber,
+      rfidTag,
+      sex,
+      dateOfBirth,
+      breed,
+      weight,
+      imageUrl,
+      imagePublicId,
+    } = req.body;
 
     const species = await Species.findByPk(speciesId);
     if (!species) {
@@ -135,6 +149,8 @@ export async function createAnimal(req: Request, res: Response) {
       date_of_birth: dateOfBirth ?? null,
       breed: breed ?? null,
       weight: weight ?? null,
+      image_url: imageUrl ?? null,
+      image_public_id: imagePublicId ?? null,
     });
 
     return res.status(StatusCodes.CREATED).json(
@@ -152,6 +168,8 @@ export async function createAnimal(req: Request, res: Response) {
             sex: animal.get("sex"),
             dateOfBirth: animal.get("date_of_birth"),
             status: animal.get("status"),
+            imageUrl: animal.get("image_url"),
+            imagePublicId: animal.get("image_public_id"),
             qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
           },
         },
@@ -346,6 +364,8 @@ export async function listAnimals(req: Request, res: Response) {
               sex: animal.get("sex"),
               status: animal.get("status"),
               healthStatus: healthMap.get(id) ?? "healthy",
+              imageUrl: animal.get("image_url"),
+              imagePublicId: animal.get("image_public_id"),
               species: (animal as any).species,
               createdAt: animal.get("created_at"),
               updatedAt: animal.get("updated_at"),
@@ -435,6 +455,8 @@ export async function getAnimalById(req: Request, res: Response) {
             dateOfBirth: animal.get("date_of_birth"),
             status: animal.get("status"),
             healthStatus,
+            imageUrl: animal.get("image_url"),
+            imagePublicId: animal.get("image_public_id"),
             species: (animal as any).species,
             createdAt: animal.get("created_at"),
             updatedAt: animal.get("updated_at"),
@@ -518,6 +540,8 @@ export async function updateAnimal(req: Request, res: Response) {
       weight,
       status,
       statusNotes,
+      imageUrl,
+      imagePublicId,
     } = parsed.data as {
       speciesId?: string;
       tagNumber?: string | null;
@@ -528,6 +552,8 @@ export async function updateAnimal(req: Request, res: Response) {
       weight?: number | null;
       status?: StatusEnum;
       statusNotes?: string | null;
+      imageUrl?: string | null;
+      imagePublicId?: string | null;
     };
 
     if (speciesId) {
@@ -614,6 +640,14 @@ export async function updateAnimal(req: Request, res: Response) {
       updates.weight = weight;
     }
 
+    if (imageUrl !== undefined) {
+      updates.image_url = imageUrl;
+    }
+
+    if (imagePublicId !== undefined) {
+      updates.image_public_id = imagePublicId;
+    }
+
     const activityEvents: any[] = [];
 
     const pushIfChanged = (
@@ -672,6 +706,18 @@ export async function updateAnimal(req: Request, res: Response) {
 
     if (weight !== undefined) {
       pushIfChanged("weight", animal.get("weight"), updates.weight);
+    }
+
+    if (imageUrl !== undefined) {
+      pushIfChanged("image_url", animal.get("image_url"), updates.image_url);
+    }
+
+    if (imagePublicId !== undefined) {
+      pushIfChanged(
+        "image_public_id",
+        animal.get("image_public_id"),
+        updates.image_public_id
+      );
     }
 
     const currentStatus = animal.get("status") as StatusEnum;
@@ -781,6 +827,8 @@ export async function updateAnimal(req: Request, res: Response) {
             dateOfBirth: animal.get("date_of_birth"),
             status: animal.get("status"),
             speciesId: animal.get("species_id"),
+            imageUrl: animal.get("image_url"),
+            imagePublicId: animal.get("image_public_id"),
             updatedAt: animal.get("updated_at"),
           },
         },
@@ -960,6 +1008,221 @@ export async function bulkLookupAnimals(req: Request, res: Response) {
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
       errorResponse({
         message: "Failed to bulk look up animals",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
+  }
+}
+
+export async function uploadAnimalImage(req: Request, res: Response) {
+  try {
+    const ranchId = req.ranch!.id;
+    const { id } = req.params;
+    const requesterRole = req.membership!.ranchRole;
+    const recorderId = req.user!.id;
+
+    const canUpdate =
+      requesterRole === RANCH_ROLES.OWNER ||
+      requesterRole === RANCH_ROLES.MANAGER ||
+      requesterRole === RANCH_ROLES.VET;
+
+    if (!canUpdate) {
+      return res.status(StatusCodes.FORBIDDEN).json(
+        errorResponse({
+          message: "Not allowed to upload animal image",
+        })
+      );
+    }
+
+    if (!req.file) {
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Image file is required",
+        })
+      );
+    }
+
+    const animal = await Animal.findOne({
+      where: { id, ranch_id: ranchId },
+    } as any);
+
+    if (!animal) {
+      return res.status(StatusCodes.NOT_FOUND).json(
+        errorResponse({
+          message: "Animal not found",
+        })
+      );
+    }
+
+    const oldImagePublicId = animal.get("image_public_id") as string | null;
+
+    const uploadResult = await uploadBufferToCloudinary(
+      req.file.buffer,
+      `smartruga/animals/${ranchId}`,
+      `animal-${animal.get("public_id")}`
+    );
+
+    if (oldImagePublicId && oldImagePublicId !== uploadResult.publicId) {
+      await deleteFromCloudinary(oldImagePublicId);
+    }
+
+    const previousImageUrl = animal.get("image_url");
+    const previousImagePublicId = animal.get("image_public_id");
+
+    await animal.update({
+      image_url: uploadResult.secureUrl,
+      image_public_id: uploadResult.publicId,
+    });
+
+    const activityEvents: any[] = [];
+
+    const pushIfChanged = (field: string, fromVal: any, toVal: any) => {
+      const fromStr =
+        fromVal === undefined || fromVal === null ? null : String(fromVal);
+      const toStr =
+        toVal === undefined || toVal === null ? null : String(toVal);
+
+      if (fromStr !== toStr) {
+        activityEvents.push({
+          ranch_id: ranchId,
+          animal_id: animal.get("id") as string,
+          event_type: "animal_update",
+          field,
+          from_value: fromStr,
+          to_value: toStr,
+          notes: "Animal image updated",
+          recorded_by: recorderId,
+          created_at: new Date(),
+        });
+      }
+    };
+
+    pushIfChanged("image_url", previousImageUrl, uploadResult.secureUrl);
+    pushIfChanged("image_public_id", previousImagePublicId, uploadResult.publicId);
+
+    if (activityEvents.length > 0) {
+      await AnimalActivityEvent.bulkCreate(activityEvents);
+    }
+
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Animal image uploaded successfully",
+        data: {
+          animal: {
+            id: animal.get("id"),
+            publicId: animal.get("public_id"),
+            imageUrl: animal.get("image_url"),
+            imagePublicId: animal.get("image_public_id"),
+          },
+        },
+      })
+    );
+  } catch (err: any) {
+    console.error("UPLOAD_ANIMAL_IMAGE_ERROR:", err);
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to upload animal image",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
+  }
+}
+
+export async function removeAnimalImage(req: Request, res: Response) {
+  try {
+    const ranchId = req.ranch!.id;
+    const { id } = req.params;
+    const requesterRole = req.membership!.ranchRole;
+    const recorderId = req.user!.id;
+
+    const canUpdate =
+      requesterRole === RANCH_ROLES.OWNER ||
+      requesterRole === RANCH_ROLES.MANAGER ||
+      requesterRole === RANCH_ROLES.VET;
+
+    if (!canUpdate) {
+      return res.status(StatusCodes.FORBIDDEN).json(
+        errorResponse({
+          message: "Not allowed to remove animal image",
+        })
+      );
+    }
+
+    const animal = await Animal.findOne({
+      where: { id, ranch_id: ranchId },
+    } as any);
+
+    if (!animal) {
+      return res.status(StatusCodes.NOT_FOUND).json(
+        errorResponse({
+          message: "Animal not found",
+        })
+      );
+    }
+
+    const oldImageUrl = animal.get("image_url") as string | null;
+    const oldImagePublicId = animal.get("image_public_id") as string | null;
+
+    if (!oldImageUrl && !oldImagePublicId) {
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Animal does not have an image",
+        })
+      );
+    }
+
+    if (oldImagePublicId) {
+      await deleteFromCloudinary(oldImagePublicId);
+    }
+
+    await animal.update({
+      image_url: null,
+      image_public_id: null,
+    });
+
+    await AnimalActivityEvent.bulkCreate([
+      {
+        ranch_id: ranchId,
+        animal_id: animal.get("id") as string,
+        event_type: "animal_update",
+        field: "image_url",
+        from_value: oldImageUrl,
+        to_value: null,
+        notes: "Animal image removed",
+        recorded_by: recorderId,
+        created_at: new Date(),
+      },
+      {
+        ranch_id: ranchId,
+        animal_id: animal.get("id") as string,
+        event_type: "animal_update",
+        field: "image_public_id",
+        from_value: oldImagePublicId,
+        to_value: null,
+        notes: "Animal image removed",
+        recorded_by: recorderId,
+        created_at: new Date(),
+      },
+    ]);
+
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Animal image removed successfully",
+        data: {
+          animal: {
+            id: animal.get("id"),
+            publicId: animal.get("public_id"),
+            imageUrl: animal.get("image_url"),
+            imagePublicId: animal.get("image_public_id"),
+          },
+        },
+      })
+    );
+  } catch (err: any) {
+    console.error("REMOVE_ANIMAL_IMAGE_ERROR:", err);
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to remove animal image",
         errors: err?.message ?? "Unknown error",
       })
     );

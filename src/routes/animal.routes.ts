@@ -406,6 +406,86 @@
  *         description: Server error
  */
 
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals/{id}/image:
+ *   post:
+ *     tags:
+ *       - Livestock
+ *     summary: Upload or replace animal image
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - image
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Animal image uploaded successfully
+ *       400:
+ *         description: Image file is required
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Animal not found
+ */
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals/{id}/image:
+ *   delete:
+ *     tags:
+ *       - Livestock
+ *     summary: Remove animal image
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Animal image removed successfully
+ *       400:
+ *         description: Animal does not have an image
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Animal not found
+ */
+
 // Import necessary modules and middlewares
 
 import { Router } from "express";
@@ -418,8 +498,11 @@ import {
   updateAnimal,
   lookupAnimal,
   bulkLookupAnimals,
+  uploadAnimalImage,
+  removeAnimalImage,
 } from "../controllers/animal.controller";
 import { getAnimalQrPng } from "../controllers/animalQr.controller";
+import { upload } from "../middlewares/upload";
 
 const router = Router({ mergeParams: true });
 
@@ -472,4 +555,18 @@ router.get(
   getAnimalQrPng
 );
 
+router.post(
+  "/:slug/animals/:id/image",
+  requireAuth(),
+  requireRanchAccess("slug"),
+  upload.single("image"),
+  uploadAnimalImage
+);
+
+router.delete(
+  "/:slug/animals/:id/image",
+  requireAuth(),
+  requireRanchAccess("slug"),
+  removeAnimalImage
+);
 export default router;
