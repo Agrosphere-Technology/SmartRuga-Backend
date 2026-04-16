@@ -14,6 +14,7 @@ import {
 } from "../validators/inventory.validator";
 import { ALLOWED_INVENTORY_MANAGERS } from "../helpers/inventory.helpers";
 import { createRanchAlert } from "../services/ranchAlert.service";
+import { errorResponse, successResponse } from "../utils/apiResponse";
 
 function pickValue(obj: any, keys: string[]) {
     if (!obj) return null;
@@ -85,18 +86,22 @@ export async function createInventoryItem(req: Request, res: Response) {
         const ranchRole = req.membership!.ranchRole;
 
         if (!ALLOWED_INVENTORY_MANAGERS.includes(ranchRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Forbidden",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Forbidden",
+                })
+            );
         }
 
         const parsed = createInventoryItemSchema.safeParse(req.body);
 
         if (!parsed.success) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Validation failed",
-                errors: parsed.error.flatten(),
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Validation failed",
+                    errors: parsed.error.flatten(),
+                })
+            );
         }
 
         const validated = parsed.data;
@@ -125,16 +130,22 @@ export async function createInventoryItem(req: Request, res: Response) {
             ],
         });
 
-        return res.status(StatusCodes.CREATED).json({
-            message: "Inventory item created successfully",
-            item: formatInventoryItem(item),
-        });
+        return res.status(StatusCodes.CREATED).json(
+            successResponse({
+                message: "Inventory item created successfully",
+                data: {
+                    item: formatInventoryItem(item),
+                },
+            })
+        );
     } catch (err: any) {
         console.error("CREATE_INVENTORY_ITEM_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to create inventory item",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to create inventory item",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -216,34 +227,43 @@ export async function listInventoryItems(req: Request, res: Response) {
         const totalItems = count;
         const totalPages = Math.ceil(totalItems / limit) || 1;
 
-        return res.status(StatusCodes.OK).json({
-            items: rows.map((item) => formatInventoryItem(item)),
-            pagination: {
-                page,
-                limit,
-                totalItems,
-                totalPages,
-                hasNextPage: page < totalPages,
-                hasPreviousPage: page > 1,
-            },
-            filters: {
-                category: category ?? null,
-                search: search ?? null,
-                isActive:
-                    isActiveQuery === "true"
-                        ? true
-                        : isActiveQuery === "false"
-                            ? false
-                            : true,
-                lowStockOnly,
-            },
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Inventory items fetched successfully",
+                data: {
+                    items: rows.map((item) => formatInventoryItem(item)),
+                },
+                meta: {
+                    pagination: {
+                        page,
+                        limit,
+                        totalItems,
+                        totalPages,
+                        hasNextPage: page < totalPages,
+                        hasPreviousPage: page > 1,
+                    },
+                    filters: {
+                        category: category ?? null,
+                        search: search ?? null,
+                        isActive:
+                            isActiveQuery === "true"
+                                ? true
+                                : isActiveQuery === "false"
+                                    ? false
+                                    : true,
+                        lowStockOnly,
+                    },
+                },
+            })
+        );
     } catch (err: any) {
         console.error("LIST_INVENTORY_ITEMS_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to list inventory items",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to list inventory items",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -274,20 +294,27 @@ export async function getInventorySummary(req: Request, res: Response) {
                 }),
             ]);
 
-        return res.status(StatusCodes.OK).json({
-            summary: {
-                totalItems,
-                activeItems,
-                inactiveItems,
-                lowStockItems,
-            },
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Inventory summary fetched successfully",
+                data: {
+                    summary: {
+                        totalItems,
+                        activeItems,
+                        inactiveItems,
+                        lowStockItems,
+                    },
+                },
+            })
+        );
     } catch (err: any) {
         console.error("GET_INVENTORY_SUMMARY_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to fetch inventory summary",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to fetch inventory summary",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -311,15 +338,22 @@ export async function listLowStockInventoryItems(req: Request, res: Response) {
             order: [["updated_at", "ASC"]],
         });
 
-        return res.status(StatusCodes.OK).json({
-            items: items.map((item) => formatInventoryItem(item)),
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Low stock inventory items fetched successfully",
+                data: {
+                    items: items.map((item) => formatInventoryItem(item)),
+                },
+            })
+        );
     } catch (err: any) {
         console.error("LIST_LOW_STOCK_INVENTORY_ITEMS_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to fetch low stock inventory items",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to fetch low stock inventory items",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -387,26 +421,33 @@ export async function getInventoryDashboard(req: Request, res: Response) {
             (totalQuantityResult as any)?.total_quantity_on_hand ?? 0
         );
 
-        return res.status(StatusCodes.OK).json({
-            dashboard: {
-                totalItems,
-                activeItems,
-                inactiveItems,
-                lowStockItems,
-                totalQuantityOnHand,
-                categories: (categoryBreakdown as any[]).map((row) => ({
-                    category: row.category,
-                    count: Number(row.count ?? 0),
-                    totalQuantityOnHand: Number(row.totalQuantityOnHand ?? 0),
-                })),
-            },
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Inventory dashboard analytics fetched successfully",
+                data: {
+                    dashboard: {
+                        totalItems,
+                        activeItems,
+                        inactiveItems,
+                        lowStockItems,
+                        totalQuantityOnHand,
+                        categories: (categoryBreakdown as any[]).map((row) => ({
+                            category: row.category,
+                            count: Number(row.count ?? 0),
+                            totalQuantityOnHand: Number(row.totalQuantityOnHand ?? 0),
+                        })),
+                    },
+                },
+            })
+        );
     } catch (err: any) {
         console.error("GET_INVENTORY_DASHBOARD_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to fetch inventory dashboard analytics",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to fetch inventory dashboard analytics",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -435,46 +476,56 @@ export async function listRecentInventoryMovements(req: Request, res: Response) 
             limit,
         });
 
-        return res.status(StatusCodes.OK).json({
-            movements: movements.map((movement: any) => {
-                const recordedByUser = movement.get("recordedByUser") ?? null;
-                const inventoryItem = movement.get("inventoryItem") ?? null;
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Recent inventory movements fetched successfully",
+                data: {
+                    movements: movements.map((movement: any) => {
+                        const recordedByUser = movement.get("recordedByUser") ?? null;
+                        const inventoryItem = movement.get("inventoryItem") ?? null;
 
-                return {
-                    publicId: pickValue(movement, ["public_id", "publicId"]),
-                    type: pickValue(movement, ["type"]),
-                    quantity: Number(pickValue(movement, ["quantity"]) ?? 0),
-                    previousQuantity: Number(
-                        pickValue(movement, ["previous_quantity", "previousQuantity"]) ?? 0
-                    ),
-                    newQuantity: Number(
-                        pickValue(movement, ["new_quantity", "newQuantity"]) ?? 0
-                    ),
-                    reason: pickValue(movement, ["reason"]),
-                    referenceType: pickValue(movement, ["reference_type", "referenceType"]),
-                    referencePublicId: pickValue(movement, [
-                        "reference_public_id",
-                        "referencePublicId",
-                    ]),
-                    createdAt: pickValue(movement, ["created_at", "createdAt"]),
-                    item: inventoryItem
-                        ? {
-                            publicId: pickValue(inventoryItem, ["public_id", "publicId"]),
-                            name: pickValue(inventoryItem, ["name"]),
-                            category: pickValue(inventoryItem, ["category"]),
-                            unit: pickValue(inventoryItem, ["unit"]),
-                        }
-                        : null,
-                    recordedByUser: formatUser(recordedByUser),
-                };
-            }),
-        });
+                        return {
+                            publicId: pickValue(movement, ["public_id", "publicId"]),
+                            type: pickValue(movement, ["type"]),
+                            quantity: Number(pickValue(movement, ["quantity"]) ?? 0),
+                            previousQuantity: Number(
+                                pickValue(movement, ["previous_quantity", "previousQuantity"]) ?? 0
+                            ),
+                            newQuantity: Number(
+                                pickValue(movement, ["new_quantity", "newQuantity"]) ?? 0
+                            ),
+                            reason: pickValue(movement, ["reason"]),
+                            referenceType: pickValue(movement, ["reference_type", "referenceType"]),
+                            referencePublicId: pickValue(movement, [
+                                "reference_public_id",
+                                "referencePublicId",
+                            ]),
+                            createdAt: pickValue(movement, ["created_at", "createdAt"]),
+                            item: inventoryItem
+                                ? {
+                                    publicId: pickValue(inventoryItem, ["public_id", "publicId"]),
+                                    name: pickValue(inventoryItem, ["name"]),
+                                    category: pickValue(inventoryItem, ["category"]),
+                                    unit: pickValue(inventoryItem, ["unit"]),
+                                }
+                                : null,
+                            recordedByUser: formatUser(recordedByUser),
+                        };
+                    }),
+                },
+                meta: {
+                    limit,
+                },
+            })
+        );
     } catch (err: any) {
         console.error("LIST_RECENT_INVENTORY_MOVEMENTS_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to fetch recent inventory movements",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to fetch recent inventory movements",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -496,20 +547,29 @@ export async function getInventoryItemByPublicId(req: Request, res: Response) {
         });
 
         if (!item) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Item not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Item not found",
+                })
+            );
         }
 
-        return res.status(StatusCodes.OK).json({
-            item: formatInventoryItem(item),
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Inventory item fetched successfully",
+                data: {
+                    item: formatInventoryItem(item),
+                },
+            })
+        );
     } catch (err: any) {
         console.error("GET_INVENTORY_ITEM_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to fetch inventory item",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to fetch inventory item",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -522,18 +582,22 @@ export async function updateInventoryItem(req: Request, res: Response) {
         const { itemPublicId } = req.params;
 
         if (!ALLOWED_INVENTORY_MANAGERS.includes(ranchRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Forbidden",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Forbidden",
+                })
+            );
         }
 
         const parsed = updateInventoryItemSchema.safeParse(req.body);
 
         if (!parsed.success) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Validation failed",
-                errors: parsed.error.flatten(),
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Validation failed",
+                    errors: parsed.error.flatten(),
+                })
+            );
         }
 
         const validated = parsed.data;
@@ -546,9 +610,11 @@ export async function updateInventoryItem(req: Request, res: Response) {
         });
 
         if (!item) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Item not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Item not found",
+                })
+            );
         }
 
         await item.update({
@@ -575,16 +641,22 @@ export async function updateInventoryItem(req: Request, res: Response) {
             ],
         });
 
-        return res.status(StatusCodes.OK).json({
-            message: "Inventory item updated successfully",
-            item: formatInventoryItem(updatedItem),
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Inventory item updated successfully",
+                data: {
+                    item: formatInventoryItem(updatedItem),
+                },
+            })
+        );
     } catch (err: any) {
         console.error("UPDATE_INVENTORY_ITEM_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to update inventory item",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to update inventory item",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -597,9 +669,11 @@ export async function deactivateInventoryItem(req: Request, res: Response) {
         const { itemPublicId } = req.params;
 
         if (!ALLOWED_INVENTORY_MANAGERS.includes(ranchRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Forbidden",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Forbidden",
+                })
+            );
         }
 
         const item = await InventoryItem.findOne({
@@ -610,15 +684,19 @@ export async function deactivateInventoryItem(req: Request, res: Response) {
         });
 
         if (!item) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Item not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Item not found",
+                })
+            );
         }
 
         if (!item.getDataValue("is_active")) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Inventory item is already inactive",
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Inventory item is already inactive",
+                })
+            );
         }
 
         await item.update({
@@ -637,16 +715,22 @@ export async function deactivateInventoryItem(req: Request, res: Response) {
             ],
         });
 
-        return res.status(StatusCodes.OK).json({
-            message: "Inventory item deactivated successfully",
-            item: formatInventoryItem(updatedItem),
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Inventory item deactivated successfully",
+                data: {
+                    item: formatInventoryItem(updatedItem),
+                },
+            })
+        );
     } catch (err: any) {
         console.error("DEACTIVATE_INVENTORY_ITEM_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to deactivate inventory item",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to deactivate inventory item",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -662,19 +746,23 @@ export async function recordStockMovement(req: Request, res: Response) {
 
         if (!ALLOWED_INVENTORY_MANAGERS.includes(ranchRole)) {
             await transaction.rollback();
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Forbidden",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Forbidden",
+                })
+            );
         }
 
         const parsed = createStockMovementSchema.safeParse(req.body);
 
         if (!parsed.success) {
             await transaction.rollback();
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Validation failed",
-                errors: parsed.error.flatten(),
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Validation failed",
+                    errors: parsed.error.flatten(),
+                })
+            );
         }
 
         const validated = parsed.data;
@@ -689,16 +777,20 @@ export async function recordStockMovement(req: Request, res: Response) {
 
         if (!item) {
             await transaction.rollback();
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Item not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Item not found",
+                })
+            );
         }
 
         if (!item.getDataValue("is_active")) {
             await transaction.rollback();
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Cannot record stock movement for an inactive item",
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Cannot record stock movement for an inactive item",
+                })
+            );
         }
 
         const previous = Number(item.getDataValue("quantity_on_hand"));
@@ -716,9 +808,11 @@ export async function recordStockMovement(req: Request, res: Response) {
         if (validated.type === "stock_out") {
             if (validated.quantity > previous) {
                 await transaction.rollback();
-                return res.status(StatusCodes.BAD_REQUEST).json({
-                    message: "Insufficient stock",
-                });
+                return res.status(StatusCodes.BAD_REQUEST).json(
+                    errorResponse({
+                        message: "Insufficient stock",
+                    })
+                );
             }
 
             newQuantity = previous - validated.quantity;
@@ -780,39 +874,45 @@ export async function recordStockMovement(req: Request, res: Response) {
 
         const recordedByUser = movement?.get("recordedByUser") ?? null;
 
-        return res.status(StatusCodes.CREATED).json({
-            message: "Stock movement recorded successfully",
-            movement: {
-                publicId: pickValue(movement, ["public_id", "publicId"]),
-                type: pickValue(movement, ["type"]),
-                quantity: Number(pickValue(movement, ["quantity"]) ?? 0),
-                previousQuantity: Number(
-                    pickValue(movement, ["previous_quantity", "previousQuantity"]) ?? 0
-                ),
-                newQuantity: Number(
-                    pickValue(movement, ["new_quantity", "newQuantity"]) ?? 0
-                ),
-                reason: pickValue(movement, ["reason"]),
-                referenceType: pickValue(movement, ["reference_type", "referenceType"]),
-                referencePublicId: pickValue(movement, [
-                    "reference_public_id",
-                    "referencePublicId",
-                ]),
-                createdAt: pickValue(movement, ["created_at", "createdAt"]),
-                recordedByUser: formatUser(recordedByUser),
-            },
-            item: {
-                publicId: itemPublicIdResolved,
-                quantityOnHand: newQuantity,
-            },
-        });
+        return res.status(StatusCodes.CREATED).json(
+            successResponse({
+                message: "Stock movement recorded successfully",
+                data: {
+                    movement: {
+                        publicId: pickValue(movement, ["public_id", "publicId"]),
+                        type: pickValue(movement, ["type"]),
+                        quantity: Number(pickValue(movement, ["quantity"]) ?? 0),
+                        previousQuantity: Number(
+                            pickValue(movement, ["previous_quantity", "previousQuantity"]) ?? 0
+                        ),
+                        newQuantity: Number(
+                            pickValue(movement, ["new_quantity", "newQuantity"]) ?? 0
+                        ),
+                        reason: pickValue(movement, ["reason"]),
+                        referenceType: pickValue(movement, ["reference_type", "referenceType"]),
+                        referencePublicId: pickValue(movement, [
+                            "reference_public_id",
+                            "referencePublicId",
+                        ]),
+                        createdAt: pickValue(movement, ["created_at", "createdAt"]),
+                        recordedByUser: formatUser(recordedByUser),
+                    },
+                    item: {
+                        publicId: itemPublicIdResolved,
+                        quantityOnHand: newQuantity,
+                    },
+                },
+            })
+        );
     } catch (err: any) {
         await transaction.rollback();
         console.error("RECORD_STOCK_MOVEMENT_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to record stock movement",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to record stock movement",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -830,9 +930,11 @@ export async function listStockMovements(req: Request, res: Response) {
         });
 
         if (!item) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Item not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Item not found",
+                })
+            );
         }
 
         const movements = await InventoryStockMovement.findAll({
@@ -843,45 +945,52 @@ export async function listStockMovements(req: Request, res: Response) {
             order: [["created_at", "DESC"]],
         });
 
-        return res.status(StatusCodes.OK).json({
-            item: {
-                publicId: item.getDataValue("public_id"),
-                name: item.getDataValue("name"),
-                quantityOnHand: Number(item.getDataValue("quantity_on_hand")),
-                isActive: item.getDataValue("is_active"),
-            },
-            movements: movements.map((movement: any) => {
-                const recordedByUser = movement.get("recordedByUser") ?? null;
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Stock movements fetched successfully",
+                data: {
+                    item: {
+                        publicId: item.getDataValue("public_id"),
+                        name: item.getDataValue("name"),
+                        quantityOnHand: Number(item.getDataValue("quantity_on_hand")),
+                        isActive: item.getDataValue("is_active"),
+                    },
+                    movements: movements.map((movement: any) => {
+                        const recordedByUser = movement.get("recordedByUser") ?? null;
 
-                return {
-                    publicId: pickValue(movement, ["public_id", "publicId"]),
-                    type: pickValue(movement, ["type"]),
-                    quantity: Number(pickValue(movement, ["quantity"]) ?? 0),
-                    previousQuantity: Number(
-                        pickValue(movement, ["previous_quantity", "previousQuantity"]) ?? 0
-                    ),
-                    newQuantity: Number(
-                        pickValue(movement, ["new_quantity", "newQuantity"]) ?? 0
-                    ),
-                    reason: pickValue(movement, ["reason"]),
-                    referenceType: pickValue(movement, [
-                        "reference_type",
-                        "referenceType",
-                    ]),
-                    referencePublicId: pickValue(movement, [
-                        "reference_public_id",
-                        "referencePublicId",
-                    ]),
-                    createdAt: pickValue(movement, ["created_at", "createdAt"]),
-                    recordedByUser: formatUser(recordedByUser),
-                };
-            }),
-        });
+                        return {
+                            publicId: pickValue(movement, ["public_id", "publicId"]),
+                            type: pickValue(movement, ["type"]),
+                            quantity: Number(pickValue(movement, ["quantity"]) ?? 0),
+                            previousQuantity: Number(
+                                pickValue(movement, ["previous_quantity", "previousQuantity"]) ?? 0
+                            ),
+                            newQuantity: Number(
+                                pickValue(movement, ["new_quantity", "newQuantity"]) ?? 0
+                            ),
+                            reason: pickValue(movement, ["reason"]),
+                            referenceType: pickValue(movement, [
+                                "reference_type",
+                                "referenceType",
+                            ]),
+                            referencePublicId: pickValue(movement, [
+                                "reference_public_id",
+                                "referencePublicId",
+                            ]),
+                            createdAt: pickValue(movement, ["created_at", "createdAt"]),
+                            recordedByUser: formatUser(recordedByUser),
+                        };
+                    }),
+                },
+            })
+        );
     } catch (err: any) {
         console.error("LIST_STOCK_MOVEMENTS_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to list stock movements",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to list stock movements",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }

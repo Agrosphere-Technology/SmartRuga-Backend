@@ -6,6 +6,7 @@ import {
     updateRanchLocationSchema,
 } from "../validators/ranchLocation.validator";
 import { col, fn } from "sequelize";
+import { errorResponse, successResponse } from "../utils/apiResponse";
 
 export async function createRanchLocation(req: Request, res: Response) {
     try {
@@ -15,9 +16,11 @@ export async function createRanchLocation(req: Request, res: Response) {
         const ranch = await Ranch.findOne({ where: { slug } });
 
         if (!ranch) {
-            return res
-                .status(StatusCodes.NOT_FOUND)
-                .json({ message: "Ranch not found" });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Ranch not found",
+                })
+            );
         }
 
         const ranchId = ranch.get("id") as string;
@@ -30,9 +33,11 @@ export async function createRanchLocation(req: Request, res: Response) {
         });
 
         if (existingByName) {
-            return res.status(StatusCodes.CONFLICT).json({
-                message: "Location name already exists in this ranch",
-            });
+            return res.status(StatusCodes.CONFLICT).json(
+                errorResponse({
+                    message: "Location name already exists in this ranch",
+                })
+            );
         }
 
         if (code) {
@@ -41,9 +46,11 @@ export async function createRanchLocation(req: Request, res: Response) {
             });
 
             if (existingByCode) {
-                return res.status(StatusCodes.CONFLICT).json({
-                    message: "Location code already exists in this ranch",
-                });
+                return res.status(StatusCodes.CONFLICT).json(
+                    errorResponse({
+                        message: "Location code already exists in this ranch",
+                    })
+                );
             }
         }
 
@@ -56,12 +63,21 @@ export async function createRanchLocation(req: Request, res: Response) {
             is_active: parsed.isActive ?? true,
         });
 
-        return res.status(StatusCodes.CREATED).json({ location });
+        return res.status(StatusCodes.CREATED).json(
+            successResponse({
+                message: "Ranch location created successfully",
+                data: {
+                    location,
+                },
+            })
+        );
     } catch (error: any) {
-        return res.status(StatusCodes.BAD_REQUEST).json({
-            message: error?.issues ? "Invalid payload" : error.message || "Server error",
-            errors: error?.issues || undefined,
-        });
+        return res.status(StatusCodes.BAD_REQUEST).json(
+            errorResponse({
+                message: error?.issues ? "Invalid payload" : error.message || "Server error",
+                errors: error?.issues || undefined,
+            })
+        );
     }
 }
 
@@ -72,9 +88,11 @@ export async function listRanchLocations(req: Request, res: Response) {
         const ranch = await Ranch.findOne({ where: { slug } });
 
         if (!ranch) {
-            return res
-                .status(StatusCodes.NOT_FOUND)
-                .json({ message: "Ranch not found" });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Ranch not found",
+                })
+            );
         }
 
         const ranchId = ranch.get("id") as string;
@@ -84,11 +102,20 @@ export async function listRanchLocations(req: Request, res: Response) {
             order: [["name", "ASC"]],
         });
 
-        return res.status(StatusCodes.OK).json({ locations });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Ranch locations fetched successfully",
+                data: {
+                    locations,
+                },
+            })
+        );
     } catch (error: any) {
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: error.message || "Server error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: error.message || "Server error",
+            })
+        );
     }
 }
 
@@ -99,9 +126,11 @@ export async function getRanchLocationById(req: Request, res: Response) {
         const ranch = await Ranch.findOne({ where: { slug } });
 
         if (!ranch) {
-            return res
-                .status(StatusCodes.NOT_FOUND)
-                .json({ message: "Ranch not found" });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Ranch not found",
+                })
+            );
         }
 
         const ranchId = ranch.get("id") as string;
@@ -114,16 +143,27 @@ export async function getRanchLocationById(req: Request, res: Response) {
         });
 
         if (!location) {
-            return res
-                .status(StatusCodes.NOT_FOUND)
-                .json({ message: "Location not found" });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Location not found",
+                })
+            );
         }
 
-        return res.status(StatusCodes.OK).json({ location });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Ranch location fetched successfully",
+                data: {
+                    location,
+                },
+            })
+        );
     } catch (error: any) {
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: error.message || "Server error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: error.message || "Server error",
+            })
+        );
     }
 }
 
@@ -135,9 +175,11 @@ export async function updateRanchLocation(req: Request, res: Response) {
         const ranch = await Ranch.findOne({ where: { slug } });
 
         if (!ranch) {
-            return res
-                .status(StatusCodes.NOT_FOUND)
-                .json({ message: "Ranch not found" });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Ranch not found",
+                })
+            );
         }
 
         const ranchId = ranch.get("id") as string;
@@ -150,9 +192,11 @@ export async function updateRanchLocation(req: Request, res: Response) {
         });
 
         if (!location) {
-            return res
-                .status(StatusCodes.NOT_FOUND)
-                .json({ message: "Location not found" });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Location not found",
+                })
+            );
         }
 
         if (parsed.name !== undefined) {
@@ -166,9 +210,11 @@ export async function updateRanchLocation(req: Request, res: Response) {
                 existingByName &&
                 existingByName.get("public_id") !== location.get("public_id")
             ) {
-                return res.status(StatusCodes.CONFLICT).json({
-                    message: "Location name already exists in this ranch",
-                });
+                return res.status(StatusCodes.CONFLICT).json(
+                    errorResponse({
+                        message: "Location name already exists in this ranch",
+                    })
+                );
             }
 
             location.set("name", name);
@@ -186,9 +232,11 @@ export async function updateRanchLocation(req: Request, res: Response) {
                     existingByCode &&
                     existingByCode.get("public_id") !== location.get("public_id")
                 ) {
-                    return res.status(StatusCodes.CONFLICT).json({
-                        message: "Location code already exists in this ranch",
-                    });
+                    return res.status(StatusCodes.CONFLICT).json(
+                        errorResponse({
+                            message: "Location code already exists in this ranch",
+                        })
+                    );
                 }
             }
 
@@ -209,17 +257,25 @@ export async function updateRanchLocation(req: Request, res: Response) {
 
         await location.save();
 
-        return res.status(StatusCodes.OK).json({ location });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Ranch location updated successfully",
+                data: {
+                    location,
+                },
+            })
+        );
     } catch (error: any) {
-        return res.status(StatusCodes.BAD_REQUEST).json({
-            message: error?.issues ? "Invalid payload" : error.message || "Server error",
-            errors: error?.issues || undefined,
-        });
+        return res.status(StatusCodes.BAD_REQUEST).json(
+            errorResponse({
+                message: error?.issues ? "Invalid payload" : error.message || "Server error",
+                errors: error?.issues || undefined,
+            })
+        );
     }
 }
 
-// Lis Animals In a Location
-
+// List Animals In a Location
 export async function listAnimalsInLocation(req: Request, res: Response) {
     try {
         const { slug, id } = req.params;
@@ -227,9 +283,11 @@ export async function listAnimalsInLocation(req: Request, res: Response) {
         const ranch = await Ranch.findOne({ where: { slug } });
 
         if (!ranch) {
-            return res
-                .status(StatusCodes.NOT_FOUND)
-                .json({ message: "Ranch not found" });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Ranch not found",
+                })
+            );
         }
 
         const ranchId = ranch.get("id") as string;
@@ -242,9 +300,11 @@ export async function listAnimalsInLocation(req: Request, res: Response) {
         });
 
         if (!location) {
-            return res
-                .status(StatusCodes.NOT_FOUND)
-                .json({ message: "Location not found" });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Location not found",
+                })
+            );
         }
 
         const animals = await Animal.findAll({
@@ -263,43 +323,49 @@ export async function listAnimalsInLocation(req: Request, res: Response) {
             order: [["created_at", "DESC"]],
         } as any);
 
-        return res.status(StatusCodes.OK).json({
-            location: {
-                id: location.get("public_id"),
-                name: location.get("name"),
-                code: location.get("code"),
-                locationType: location.get("location_type"),
-                description: location.get("description"),
-                isActive: location.get("is_active"),
-            },
-            animalCount: animals.length,
-            animals: animals.map((animal: any) => ({
-                publicId: animal.get("public_id"),
-                tagNumber: animal.get("tag_number"),
-                rfidTag: animal.get("rfid_tag"),
-                sex: animal.get("sex"),
-                dateOfBirth: animal.get("date_of_birth"),
-                status: animal.get("status"),
-                species: animal.species
-                    ? {
-                        id: animal.species.get("id"),
-                        name: animal.species.get("name"),
-                        code: animal.species.get("code"),
-                    }
-                    : null,
-            })),
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Animals in location fetched successfully",
+                data: {
+                    location: {
+                        id: location.get("public_id"),
+                        name: location.get("name"),
+                        code: location.get("code"),
+                        locationType: location.get("location_type"),
+                        description: location.get("description"),
+                        isActive: location.get("is_active"),
+                    },
+                    animalCount: animals.length,
+                    animals: animals.map((animal: any) => ({
+                        publicId: animal.get("public_id"),
+                        tagNumber: animal.get("tag_number"),
+                        rfidTag: animal.get("rfid_tag"),
+                        sex: animal.get("sex"),
+                        dateOfBirth: animal.get("date_of_birth"),
+                        status: animal.get("status"),
+                        species: animal.species
+                            ? {
+                                id: animal.species.get("id"),
+                                name: animal.species.get("name"),
+                                code: animal.species.get("code"),
+                            }
+                            : null,
+                    })),
+                },
+            })
+        );
     } catch (error: any) {
         console.error("LIST_ANIMALS_IN_LOCATION_ERROR:", error);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to list animals in location",
-            error: error?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to list animals in location",
+                errors: error?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
-// Ranch Locations Summary or Inventory
-
+// Ranch Locations Summary / Inventory
 export async function getRanchLocationInventory(req: Request, res: Response) {
     try {
         const { slug } = req.params;
@@ -307,9 +373,11 @@ export async function getRanchLocationInventory(req: Request, res: Response) {
         const ranch = await Ranch.findOne({ where: { slug } });
 
         if (!ranch) {
-            return res
-                .status(StatusCodes.NOT_FOUND)
-                .json({ message: "Ranch not found" });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Ranch not found",
+                })
+            );
         }
 
         const ranchId = ranch.get("id") as string;
@@ -353,24 +421,31 @@ export async function getRanchLocationInventory(req: Request, res: Response) {
             0
         );
 
-        return res.status(StatusCodes.OK).json({
-            totalLocations: locations.length,
-            totalAnimals,
-            locations: locations.map((location: any) => ({
-                id: location.get("public_id"),
-                name: location.get("name"),
-                code: location.get("code"),
-                locationType: location.get("location_type"),
-                description: location.get("description"),
-                isActive: location.get("is_active"),
-                animalCount: Number(location.get("animal_count") || 0),
-            })),
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Ranch location inventory fetched successfully",
+                data: {
+                    totalLocations: locations.length,
+                    totalAnimals,
+                    locations: locations.map((location: any) => ({
+                        id: location.get("public_id"),
+                        name: location.get("name"),
+                        code: location.get("code"),
+                        locationType: location.get("location_type"),
+                        description: location.get("description"),
+                        isActive: location.get("is_active"),
+                        animalCount: Number(location.get("animal_count") || 0),
+                    })),
+                },
+            })
+        );
     } catch (error: any) {
         console.error("GET_RANCH_LOCATION_INVENTORY_ERROR:", error);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to get ranch inventory",
-            error: error?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to get ranch inventory",
+                errors: error?.message ?? "Unknown error",
+            })
+        );
     }
 }

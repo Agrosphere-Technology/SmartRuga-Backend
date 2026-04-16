@@ -13,6 +13,7 @@ import {
     SubmissionApprovalStatsRow,
     TaskStatsRow,
 } from "../helpers/dashboard.helpers";
+import { errorResponse, successResponse } from "../utils/apiResponse";
 
 export async function getRanchDashboard(req: Request, res: Response) {
     try {
@@ -658,47 +659,60 @@ export async function getRanchDashboard(req: Request, res: Response) {
 
         const recentActivity = buildDashboardActivity(recentActivityRows);
 
-        return res.status(StatusCodes.OK).json({
-            role: ranchRole,
-            animals: {
-                total: Number(animalStats?.total ?? 0),
-                active: Number(animalStats?.active ?? 0),
-                sold: Number(animalStats?.sold ?? 0),
-                deceased: Number(animalStats?.deceased ?? 0),
-                sick: Number(animalStats?.sick ?? 0),
-            },
-            vaccinationAlerts: {
-                overdue,
-                dueToday,
-                dueSoon,
-                dueSoonWindowDays: dueSoonDays,
-            },
-            tasks: {
-                total: Number(taskStats?.total ?? 0),
-                pending: Number(taskStats?.pending ?? 0),
-                inProgress: Number(taskStats?.in_progress ?? 0),
-                completed: Number(taskStats?.completed ?? 0),
-                cancelled: Number(taskStats?.cancelled ?? 0),
-            },
-            submissionApprovals: {
-                pending: Number(submissionApprovalStats?.pending ?? 0),
-                approved: Number(submissionApprovalStats?.approved ?? 0),
-                rejected: Number(submissionApprovalStats?.rejected ?? 0),
-            },
-            inventory: {
-                totalItems: Number(inventoryStats?.total ?? 0),
-                activeItems: Number(inventoryStats?.active ?? 0),
-                inactiveItems: Number(inventoryStats?.inactive ?? 0),
-                lowStockItems: Number(inventoryStats?.low_stock ?? 0),
-                totalQuantityOnHand: Number(inventoryStats?.total_quantity_on_hand ?? 0),
-            },
-            recentActivity,
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Ranch dashboard fetched successfully",
+                data: {
+                    role: ranchRole,
+                    animals: {
+                        total: Number(animalStats?.total ?? 0),
+                        active: Number(animalStats?.active ?? 0),
+                        sold: Number(animalStats?.sold ?? 0),
+                        deceased: Number(animalStats?.deceased ?? 0),
+                        sick: Number(animalStats?.sick ?? 0),
+                    },
+                    vaccinationAlerts: {
+                        overdue,
+                        dueToday,
+                        dueSoon,
+                        dueSoonWindowDays: dueSoonDays,
+                    },
+                    tasks: {
+                        total: Number(taskStats?.total ?? 0),
+                        pending: Number(taskStats?.pending ?? 0),
+                        inProgress: Number(taskStats?.in_progress ?? 0),
+                        completed: Number(taskStats?.completed ?? 0),
+                        cancelled: Number(taskStats?.cancelled ?? 0),
+                    },
+                    submissionApprovals: {
+                        pending: Number(submissionApprovalStats?.pending ?? 0),
+                        approved: Number(submissionApprovalStats?.approved ?? 0),
+                        rejected: Number(submissionApprovalStats?.rejected ?? 0),
+                    },
+                    inventory: {
+                        totalItems: Number(inventoryStats?.total ?? 0),
+                        activeItems: Number(inventoryStats?.active ?? 0),
+                        inactiveItems: Number(inventoryStats?.inactive ?? 0),
+                        lowStockItems: Number(inventoryStats?.low_stock ?? 0),
+                        totalQuantityOnHand: Number(
+                            inventoryStats?.total_quantity_on_hand ?? 0
+                        ),
+                    },
+                    recentActivity,
+                },
+                meta: {
+                    dueSoonDays,
+                    canManage,
+                },
+            })
+        );
     } catch (err: any) {
         console.error("GET_RANCH_DASHBOARD_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to fetch ranch dashboard",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to fetch ranch dashboard",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }

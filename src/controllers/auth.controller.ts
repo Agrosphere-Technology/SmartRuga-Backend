@@ -13,15 +13,20 @@ import {
 import { loginSchema, registerSchema } from "../validators/auth.validator";
 import { clearRefreshCookie, setRefreshCookie } from "../utils/cookies";
 import { PLATFORM_ROLES } from "../constants/roles";
+import { errorResponse, successResponse } from "../utils/apiResponse";
 
 // Register a new user
 export async function register(req: Request, res: Response) {
   try {
     const parsed = registerSchema.safeParse(req.body);
+
     if (!parsed.success) {
-      return res
-        .status(StatusCodes.BAD_REQUEST)
-        .json({ message: "Invalid payload", issues: parsed.error.issues });
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Invalid payload",
+          errors: parsed.error.issues,
+        })
+      );
     }
 
     const email = parsed.data.email.toLowerCase().trim();
@@ -29,9 +34,11 @@ export async function register(req: Request, res: Response) {
 
     const exists = await User.findOne({ where: { email } });
     if (exists) {
-      return res
-        .status(StatusCodes.CONFLICT)
-        .json({ message: "Email already in use" });
+      return res.status(StatusCodes.CONFLICT).json(
+        errorResponse({
+          message: "Email already in use",
+        })
+      );
     }
 
     const password_hash = await bcrypt.hash(password, 12);
@@ -67,23 +74,29 @@ export async function register(req: Request, res: Response) {
 
     setRefreshCookie(res, refreshToken);
 
-    return res.status(StatusCodes.CREATED).json({
-      user: {
-        id: user.get("id"),
-        email: user.get("email"),
-        firstName: user.get("first_name"),
-        lastName: user.get("last_name"),
-        platformRole,
-      },
-      accessToken,
-    });
+    return res.status(StatusCodes.CREATED).json(
+      successResponse({
+        message: "Registration successful",
+        data: {
+          user: {
+            id: user.get("id"),
+            email: user.get("email"),
+            firstName: user.get("first_name"),
+            lastName: user.get("last_name"),
+            platformRole,
+          },
+          accessToken,
+        },
+      })
+    );
   } catch (err: any) {
     console.error("REGISTER_ERROR:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: "Registration failed",
-      error: err?.message ?? "Unknown error",
-      details: err?.errors ?? null,
-    });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Registration failed",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }
 
@@ -91,10 +104,14 @@ export async function register(req: Request, res: Response) {
 export async function login(req: Request, res: Response) {
   try {
     const parsed = loginSchema.safeParse(req.body);
+
     if (!parsed.success) {
-      return res
-        .status(StatusCodes.BAD_REQUEST)
-        .json({ message: "Invalid payload", issues: parsed.error.issues });
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Invalid payload",
+          errors: parsed.error.issues,
+        })
+      );
     }
 
     const email = parsed.data.email.toLowerCase().trim();
@@ -102,9 +119,11 @@ export async function login(req: Request, res: Response) {
 
     const user = await User.findOne({ where: { email } });
     if (!user) {
-      return res
-        .status(StatusCodes.UNAUTHORIZED)
-        .json({ message: "Invalid credentials" });
+      return res.status(StatusCodes.UNAUTHORIZED).json(
+        errorResponse({
+          message: "Invalid credentials",
+        })
+      );
     }
 
     const ok = await bcrypt.compare(
@@ -113,9 +132,11 @@ export async function login(req: Request, res: Response) {
     );
 
     if (!ok) {
-      return res
-        .status(StatusCodes.UNAUTHORIZED)
-        .json({ message: "Invalid credentials" });
+      return res.status(StatusCodes.UNAUTHORIZED).json(
+        errorResponse({
+          message: "Invalid credentials",
+        })
+      );
     }
 
     const platformRole = user.get(
@@ -141,35 +162,43 @@ export async function login(req: Request, res: Response) {
 
     setRefreshCookie(res, refreshToken);
 
-    return res.status(StatusCodes.OK).json({
-      user: {
-        id: user.get("id"),
-        email: user.get("email"),
-        firstName: user.get("first_name"),
-        lastName: user.get("last_name"),
-        platformRole,
-      },
-      accessToken,
-    });
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Login successful",
+        data: {
+          user: {
+            id: user.get("id"),
+            email: user.get("email"),
+            firstName: user.get("first_name"),
+            lastName: user.get("last_name"),
+            platformRole,
+          },
+          accessToken,
+        },
+      })
+    );
   } catch (err: any) {
     console.error("LOGIN_ERROR:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: "Login failed",
-      error: err?.message ?? "Unknown error",
-      details: err?.errors ?? null,
-    });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Login failed",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }
 
 // Refresh access token
 export async function refresh(req: Request, res: Response) {
   try {
-    // cookie-first (web), fallback to body (mobile-friendly)
     const token: string | undefined = req.cookies?.rt || req.body?.refreshToken;
+
     if (!token) {
-      return res
-        .status(StatusCodes.UNAUTHORIZED)
-        .json({ message: "Missing refresh token" });
+      return res.status(StatusCodes.UNAUTHORIZED).json(
+        errorResponse({
+          message: "Missing refresh token",
+        })
+      );
     }
 
     let decoded: {
@@ -180,9 +209,11 @@ export async function refresh(req: Request, res: Response) {
     try {
       decoded = verifyRefreshToken(token);
     } catch {
-      return res
-        .status(StatusCodes.UNAUTHORIZED)
-        .json({ message: "Invalid/expired refresh token" });
+      return res.status(StatusCodes.UNAUTHORIZED).json(
+        errorResponse({
+          message: "Invalid/expired refresh token",
+        })
+      );
     }
 
     const tokenHash = sha256(token);
@@ -192,25 +223,30 @@ export async function refresh(req: Request, res: Response) {
     });
 
     if (!saved) {
-      return res
-        .status(StatusCodes.BAD_REQUEST)
-        .json({ message: "Refresh token not recognized" });
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Refresh token not recognized",
+        })
+      );
     }
 
     if (saved.get("revoked_at")) {
-      return res
-        .status(StatusCodes.UNAUTHORIZED)
-        .json({ message: "Refresh token revoked" });
+      return res.status(StatusCodes.UNAUTHORIZED).json(
+        errorResponse({
+          message: "Refresh token revoked",
+        })
+      );
     }
 
     const expiresAt = saved.get("expires_at") as Date;
     if (expiresAt.getTime() < Date.now()) {
-      return res
-        .status(StatusCodes.UNAUTHORIZED)
-        .json({ message: "Refresh token expired" });
+      return res.status(StatusCodes.UNAUTHORIZED).json(
+        errorResponse({
+          message: "Refresh token expired",
+        })
+      );
     }
 
-    // rotate refresh token
     const newRefresh = signRefreshToken({
       userId: decoded.userId,
       platformRole: decoded.platformRole,
@@ -234,14 +270,22 @@ export async function refresh(req: Request, res: Response) {
 
     setRefreshCookie(res, newRefresh);
 
-    return res.status(StatusCodes.OK).json({ accessToken: newAccess });
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Token refreshed successfully",
+        data: {
+          accessToken: newAccess,
+        },
+      })
+    );
   } catch (err: any) {
     console.error("REFRESH_ERROR:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: "Token refresh failed",
-      error: err?.message ?? "Unknown error",
-      details: err?.errors ?? null,
-    });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Token refresh failed",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }
 
@@ -262,13 +306,22 @@ export async function logout(req: Request, res: Response) {
     }
 
     clearRefreshCookie(res);
-    return res.status(StatusCodes.OK).json({ ok: true });
+
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Logout successful",
+        data: {
+          ok: true,
+        },
+      })
+    );
   } catch (err: any) {
     console.error("LOGOUT_ERROR:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: "Logout failed",
-      error: err?.message ?? "Unknown error",
-      details: err?.errors ?? null,
-    });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Logout failed",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }

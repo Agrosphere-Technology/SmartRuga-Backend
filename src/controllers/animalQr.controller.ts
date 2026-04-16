@@ -3,6 +3,7 @@ import { StatusCodes } from "http-status-codes";
 import QRCode from "qrcode";
 import { Animal } from "../models";
 import { buildAnimalQrUrl } from "../utils/qr";
+import { errorResponse } from "../utils/apiResponse";
 
 export async function getAnimalQrPng(req: Request, res: Response) {
     try {
@@ -10,8 +11,13 @@ export async function getAnimalQrPng(req: Request, res: Response) {
         const { id } = req.params;
 
         const animal = await Animal.findOne({ where: { id, ranch_id: ranchId } });
+
         if (!animal) {
-            return res.status(StatusCodes.NOT_FOUND).json({ message: "Animal not found" });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Animal not found",
+                })
+            );
         }
 
         const publicId = animal.get("public_id") as string;
@@ -25,13 +31,16 @@ export async function getAnimalQrPng(req: Request, res: Response) {
         });
 
         res.setHeader("Content-Type", "image/png");
-        res.setHeader("Cache-Control", "public, max-age=3600"); // optional
+        res.setHeader("Cache-Control", "public, max-age=3600");
+
         return res.status(StatusCodes.OK).send(pngBuffer);
     } catch (err: any) {
         console.error("ANIMAL_QR_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to generate QR code",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to generate QR code",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }

@@ -19,6 +19,7 @@ import {
   bulkAnimalLookupSchema,
 } from "../validators/animalLookup.validator";
 import { createRanchAlert } from "../services/ranchAlert.service";
+import { errorResponse, successResponse } from "../utils/apiResponse";
 
 type LatestHealthRow = {
   animal_id: string;
@@ -47,17 +48,13 @@ function canTransition(from: StatusEnum, to: StatusEnum) {
 function mapAnimalLookupResponse(animal: any) {
   return {
     publicId: animal.get("public_id"),
-
     tagNumber: animal.get("tag_number"),
     rfidTag: animal.get("rfid_tag"),
-
     breed: animal.get("breed"),
     weight: animal.get("weight"),
-
     sex: animal.get("sex"),
     dateOfBirth: animal.get("date_of_birth"),
     status: animal.get("status"),
-
     species: (animal as any).species
       ? {
         id: (animal as any).species.id,
@@ -79,18 +76,22 @@ export async function createAnimal(req: Request, res: Response) {
       requesterRole !== RANCH_ROLES.MANAGER &&
       requesterRole !== RANCH_ROLES.VET
     ) {
-      return res
-        .status(StatusCodes.FORBIDDEN)
-        .json({ message: "Not allowed to create animals" });
+      return res.status(StatusCodes.FORBIDDEN).json(
+        errorResponse({
+          message: "Not allowed to create animals",
+        })
+      );
     }
 
     const { speciesId, tagNumber, rfidTag, sex, dateOfBirth, breed, weight } = req.body;
 
     const species = await Species.findByPk(speciesId);
     if (!species) {
-      return res
-        .status(StatusCodes.BAD_REQUEST)
-        .json({ message: "Invalid species" });
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Invalid species",
+        })
+      );
     }
 
     if (tagNumber) {
@@ -101,9 +102,11 @@ export async function createAnimal(req: Request, res: Response) {
       });
 
       if (dup) {
-        return res.status(StatusCodes.CONFLICT).json({
-          message: "Tag number already exists in this ranch",
-        });
+        return res.status(StatusCodes.CONFLICT).json(
+          errorResponse({
+            message: "Tag number already exists in this ranch",
+          })
+        );
       }
     }
 
@@ -115,9 +118,11 @@ export async function createAnimal(req: Request, res: Response) {
       });
 
       if (dupRfid) {
-        return res.status(StatusCodes.CONFLICT).json({
-          message: "RFID tag already exists",
-        });
+        return res.status(StatusCodes.CONFLICT).json(
+          errorResponse({
+            message: "RFID tag already exists",
+          })
+        );
       }
     }
 
@@ -128,30 +133,38 @@ export async function createAnimal(req: Request, res: Response) {
       rfid_tag: rfidTag ? String(rfidTag).trim() : null,
       sex,
       date_of_birth: dateOfBirth ?? null,
+      breed: breed ?? null,
+      weight: weight ?? null,
     });
 
-    return res.status(StatusCodes.CREATED).json({
-      animal: {
-        id: animal.get("id") as string,
-        publicId: animal.get("public_id"),
-        tagNumber: animal.get("tag_number"),
-        rfidTag: animal.get("rfid_tag"),
-        speciesId: animal.get("species_id"),
-        breed: animal.get("breed"),
-        weight: animal.get("weight"),
-        sex: animal.get("sex"),
-        dateOfBirth: animal.get("date_of_birth"),
-        status: animal.get("status"),
-        qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
-      },
-    });
-
+    return res.status(StatusCodes.CREATED).json(
+      successResponse({
+        message: "Animal created successfully",
+        data: {
+          animal: {
+            id: animal.get("id") as string,
+            publicId: animal.get("public_id"),
+            tagNumber: animal.get("tag_number"),
+            rfidTag: animal.get("rfid_tag"),
+            speciesId: animal.get("species_id"),
+            breed: animal.get("breed"),
+            weight: animal.get("weight"),
+            sex: animal.get("sex"),
+            dateOfBirth: animal.get("date_of_birth"),
+            status: animal.get("status"),
+            qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
+          },
+        },
+      })
+    );
   } catch (err: any) {
     console.error("CREATE_ANIMAL_ERROR:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: "Failed to create animal",
-      error: err?.message ?? "Unknown error",
-    });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to create animal",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }
 
@@ -162,10 +175,12 @@ export async function listAnimals(req: Request, res: Response) {
 
     const parsed = listAnimalsQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      return res.status(StatusCodes.BAD_REQUEST).json({
-        message: "Invalid query params",
-        issues: parsed.error.issues,
-      });
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Invalid query params",
+          errors: parsed.error.issues,
+        })
+      );
     }
 
     const {
@@ -234,10 +249,26 @@ export async function listAnimals(req: Request, res: Response) {
     const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
     if (total === 0) {
-      return res.status(StatusCodes.OK).json({
-        animals: [],
-        pagination: { page, limit, total, totalPages },
-      });
+      return res.status(StatusCodes.OK).json(
+        successResponse({
+          message: "Animals fetched successfully",
+          data: {
+            animals: [],
+          },
+          meta: {
+            pagination: { page, limit, total, totalPages },
+            filters: {
+              speciesId: speciesId ?? null,
+              status: status ?? null,
+              sex: sex ?? null,
+              healthStatus: healthStatus ?? null,
+              q: q ?? null,
+              sortBy,
+              sortOrder,
+            },
+          },
+        })
+      );
     }
 
     const idsRows = await sequelize.query<{ id: string }>(
@@ -298,39 +329,51 @@ export async function listAnimals(req: Request, res: Response) {
 
     const ordered = animalIds.map((id) => animalById.get(id)).filter(Boolean);
 
-    return res.status(StatusCodes.OK).json({
-      animals: ordered.map((animal: any) => {
-        const id = animal.get("id") as string;
-        return {
-          id,
-          publicId: animal.get("public_id"),
-          qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
-
-          tagNumber: animal.get("tag_number"),
-          rfidTag: animal.get("rfid_tag"),
-
-          breed: animal.get("breed"),
-          weight: animal.get("weight"),
-
-          sex: animal.get("sex"),
-          status: animal.get("status"),
-          healthStatus: healthMap.get(id) ?? "healthy",
-
-          species: (animal as any).species,
-
-          createdAt: animal.get("created_at"),
-          updatedAt: animal.get("updated_at"),
-        };
-      }),
-
-      pagination: { page, limit, total, totalPages },
-    });
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Animals fetched successfully",
+        data: {
+          animals: ordered.map((animal: any) => {
+            const id = animal.get("id") as string;
+            return {
+              id,
+              publicId: animal.get("public_id"),
+              qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
+              tagNumber: animal.get("tag_number"),
+              rfidTag: animal.get("rfid_tag"),
+              breed: animal.get("breed"),
+              weight: animal.get("weight"),
+              sex: animal.get("sex"),
+              status: animal.get("status"),
+              healthStatus: healthMap.get(id) ?? "healthy",
+              species: (animal as any).species,
+              createdAt: animal.get("created_at"),
+              updatedAt: animal.get("updated_at"),
+            };
+          }),
+        },
+        meta: {
+          pagination: { page, limit, total, totalPages },
+          filters: {
+            speciesId: speciesId ?? null,
+            status: status ?? null,
+            sex: sex ?? null,
+            healthStatus: healthStatus ?? null,
+            q: q ?? null,
+            sortBy,
+            sortOrder,
+          },
+        },
+      })
+    );
   } catch (err: any) {
     console.error("LIST_ANIMALS_ERROR:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: "Failed to list animals",
-      error: err?.message ?? "Unknown error",
-    });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to list animals",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }
 
@@ -352,9 +395,11 @@ export async function getAnimalById(req: Request, res: Response) {
     } as any);
 
     if (!animal) {
-      return res
-        .status(StatusCodes.NOT_FOUND)
-        .json({ message: "Animal not found" });
+      return res.status(StatusCodes.NOT_FOUND).json(
+        errorResponse({
+          message: "Animal not found",
+        })
+      );
     }
 
     const rows = await sequelize.query<{ status: string }>(
@@ -372,36 +417,39 @@ export async function getAnimalById(req: Request, res: Response) {
     );
 
     const healthStatus = rows[0]?.status ?? "healthy";
-
     const publicId = animal.get("public_id") as string;
 
-    return res.json({
-      id: animal.get("id") as string,
-      publicId,
-      qrUrl: buildAnimalQrUrl(publicId),
-
-      tagNumber: animal.get("tag_number"),
-      rfidTag: animal.get("rfid_tag"),
-
-      breed: animal.get("breed"),
-      weight: animal.get("weight"),
-
-      sex: animal.get("sex"),
-      dateOfBirth: animal.get("date_of_birth"),
-      status: animal.get("status"),
-
-      healthStatus,
-      species: (animal as any).species,
-
-      createdAt: animal.get("created_at"),
-      updatedAt: animal.get("updated_at"),
-    });
-
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Animal fetched successfully",
+        data: {
+          animal: {
+            id: animal.get("id") as string,
+            publicId,
+            qrUrl: buildAnimalQrUrl(publicId),
+            tagNumber: animal.get("tag_number"),
+            rfidTag: animal.get("rfid_tag"),
+            breed: animal.get("breed"),
+            weight: animal.get("weight"),
+            sex: animal.get("sex"),
+            dateOfBirth: animal.get("date_of_birth"),
+            status: animal.get("status"),
+            healthStatus,
+            species: (animal as any).species,
+            createdAt: animal.get("created_at"),
+            updatedAt: animal.get("updated_at"),
+          },
+        },
+      })
+    );
   } catch (err: any) {
     console.error("GET_ANIMAL_ERROR:", err);
-    return res
-      .status(StatusCodes.INTERNAL_SERVER_ERROR)
-      .json({ message: "Failed to fetch animal" });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to fetch animal",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }
 
@@ -413,10 +461,12 @@ export async function updateAnimal(req: Request, res: Response) {
     const parsed = updateAnimalSchema.safeParse(req.body);
     if (!parsed.success) {
       await t.rollback();
-      return res.status(StatusCodes.BAD_REQUEST).json({
-        message: "Invalid payload",
-        issues: parsed.error.issues,
-      });
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Invalid payload",
+          errors: parsed.error.issues,
+        })
+      );
     }
 
     const ranchId = req.ranch!.id;
@@ -437,9 +487,11 @@ export async function updateAnimal(req: Request, res: Response) {
 
     if (!canUpdate) {
       await t.rollback();
-      return res
-        .status(StatusCodes.FORBIDDEN)
-        .json({ message: "Not allowed to update animals" });
+      return res.status(StatusCodes.FORBIDDEN).json(
+        errorResponse({
+          message: "Not allowed to update animals",
+        })
+      );
     }
 
     const animal = await Animal.findOne({
@@ -449,9 +501,11 @@ export async function updateAnimal(req: Request, res: Response) {
 
     if (!animal) {
       await t.rollback();
-      return res
-        .status(StatusCodes.NOT_FOUND)
-        .json({ message: "Animal not found" });
+      return res.status(StatusCodes.NOT_FOUND).json(
+        errorResponse({
+          message: "Animal not found",
+        })
+      );
     }
 
     const {
@@ -480,9 +534,11 @@ export async function updateAnimal(req: Request, res: Response) {
       const species = await Species.findByPk(speciesId, { transaction: t });
       if (!species) {
         await t.rollback();
-        return res
-          .status(StatusCodes.BAD_REQUEST)
-          .json({ message: "Invalid species" });
+        return res.status(StatusCodes.BAD_REQUEST).json(
+          errorResponse({
+            message: "Invalid species",
+          })
+        );
       }
     }
 
@@ -498,9 +554,11 @@ export async function updateAnimal(req: Request, res: Response) {
 
         if (dup && (dup.get("id") as string) !== (animal.get("id") as string)) {
           await t.rollback();
-          return res.status(StatusCodes.CONFLICT).json({
-            message: "Tag number already exists in this ranch",
-          });
+          return res.status(StatusCodes.CONFLICT).json(
+            errorResponse({
+              message: "Tag number already exists in this ranch",
+            })
+          );
         }
       }
     }
@@ -520,9 +578,11 @@ export async function updateAnimal(req: Request, res: Response) {
           (dupRfid.get("id") as string) !== (animal.get("id") as string)
         ) {
           await t.rollback();
-          return res.status(StatusCodes.CONFLICT).json({
-            message: "RFID tag already exists",
-          });
+          return res.status(StatusCodes.CONFLICT).json(
+            errorResponse({
+              message: "RFID tag already exists",
+            })
+          );
         }
       }
     }
@@ -622,16 +682,20 @@ export async function updateAnimal(req: Request, res: Response) {
 
       if (isChanging && !canChangeStatus) {
         await t.rollback();
-        return res.status(StatusCodes.FORBIDDEN).json({
-          message: "Only owner or manager can change animal status",
-        });
+        return res.status(StatusCodes.FORBIDDEN).json(
+          errorResponse({
+            message: "Only owner or manager can change animal status",
+          })
+        );
       }
 
       if (!canTransition(currentStatus, nextStatus)) {
         await t.rollback();
-        return res.status(StatusCodes.BAD_REQUEST).json({
-          message: `Invalid status transition: ${currentStatus} -> ${nextStatus}`,
-        });
+        return res.status(StatusCodes.BAD_REQUEST).json(
+          errorResponse({
+            message: `Invalid status transition: ${currentStatus} -> ${nextStatus}`,
+          })
+        );
       }
 
       const requiresNote =
@@ -641,9 +705,11 @@ export async function updateAnimal(req: Request, res: Response) {
         const note = (statusNotes ?? "").toString().trim();
         if (!note) {
           await t.rollback();
-          return res.status(StatusCodes.BAD_REQUEST).json({
-            message: "statusNotes is required when status is sold or deceased",
-          });
+          return res.status(StatusCodes.BAD_REQUEST).json(
+            errorResponse({
+              message: "statusNotes is required when status is sold or deceased",
+            })
+          );
         }
       }
 
@@ -679,8 +745,14 @@ export async function updateAnimal(req: Request, res: Response) {
             ranchId,
             animalId,
             alertType,
+            title: nextStatus === "sold" ? "Animal sold alert" : "Animal deceased alert",
             message: msg,
+            priority: "high",
+            entityType: "animal",
+            entityPublicId: String(animal.get("public_id")),
             transaction: t,
+            dedupe: true,
+            dedupeMinutes: 60,
           });
         }
       }
@@ -694,35 +766,35 @@ export async function updateAnimal(req: Request, res: Response) {
 
     await t.commit();
 
-    return res.status(StatusCodes.OK).json({
-      message: "Animal updated",
-      animal: {
-        id: animal.get("id") as string,
-        publicId: animal.get("public_id"),
-
-        tagNumber: animal.get("tag_number"),
-        rfidTag: animal.get("rfid_tag"),
-
-        breed: animal.get("breed"),
-        weight: animal.get("weight"),
-
-        sex: animal.get("sex"),
-        dateOfBirth: animal.get("date_of_birth"),
-        status: animal.get("status"),
-
-        speciesId: animal.get("species_id"),
-
-        updatedAt: animal.get("updated_at"),
-      },
-    });
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Animal updated successfully",
+        data: {
+          animal: {
+            id: animal.get("id") as string,
+            publicId: animal.get("public_id"),
+            tagNumber: animal.get("tag_number"),
+            rfidTag: animal.get("rfid_tag"),
+            breed: animal.get("breed"),
+            weight: animal.get("weight"),
+            sex: animal.get("sex"),
+            dateOfBirth: animal.get("date_of_birth"),
+            status: animal.get("status"),
+            speciesId: animal.get("species_id"),
+            updatedAt: animal.get("updated_at"),
+          },
+        },
+      })
+    );
   } catch (err: any) {
     await t.rollback();
     console.error("UPDATE_ANIMAL_ERROR:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: "Failed to update animal",
-      error: err?.message ?? "Unknown error",
-      details: err?.errors ?? null,
-    });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to update animal",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }
 
@@ -732,10 +804,12 @@ export async function lookupAnimal(req: Request, res: Response) {
     const parsed = animalLookupSchema.safeParse(req.query);
 
     if (!parsed.success) {
-      return res.status(StatusCodes.BAD_REQUEST).json({
-        message: "Invalid lookup query",
-        issues: parsed.error.issues,
-      });
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Invalid lookup query",
+          errors: parsed.error.issues,
+        })
+      );
     }
 
     const ranchId = req.ranch!.id;
@@ -771,20 +845,29 @@ export async function lookupAnimal(req: Request, res: Response) {
     } as any);
 
     if (!animal) {
-      return res.status(StatusCodes.NOT_FOUND).json({
-        message: "Animal not found",
-      });
+      return res.status(StatusCodes.NOT_FOUND).json(
+        errorResponse({
+          message: "Animal not found",
+        })
+      );
     }
 
-    return res.status(StatusCodes.OK).json({
-      animal: mapAnimalLookupResponse(animal),
-    });
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Animal looked up successfully",
+        data: {
+          animal: mapAnimalLookupResponse(animal),
+        },
+      })
+    );
   } catch (err: any) {
     console.error("LOOKUP_ANIMAL_ERROR:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: "Failed to look up animal",
-      error: err?.message ?? "Unknown error",
-    });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to look up animal",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }
 
@@ -794,10 +877,12 @@ export async function bulkLookupAnimals(req: Request, res: Response) {
     const parsed = bulkAnimalLookupSchema.safeParse(req.body);
 
     if (!parsed.success) {
-      return res.status(StatusCodes.BAD_REQUEST).json({
-        message: "Invalid payload",
-        issues: parsed.error.issues,
-      });
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Invalid payload",
+          errors: parsed.error.issues,
+        })
+      );
     }
 
     const ranchId = req.ranch!.id;
@@ -861,15 +946,22 @@ export async function bulkLookupAnimals(req: Request, res: Response) {
       }
     }
 
-    return res.status(StatusCodes.OK).json({
-      found,
-      notFound,
-    });
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Bulk animal lookup completed successfully",
+        data: {
+          found,
+          notFound,
+        },
+      })
+    );
   } catch (err: any) {
     console.error("BULK_LOOKUP_ANIMALS_ERROR:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: "Failed to bulk look up animals",
-      error: err?.message ?? "Unknown error",
-    });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to bulk look up animals",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }

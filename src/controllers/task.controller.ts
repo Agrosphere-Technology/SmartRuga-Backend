@@ -3,6 +3,7 @@ import { StatusCodes } from "http-status-codes";
 import { createTaskSchema, updateTaskStatusSchema } from "../validators/task.validator";
 import { RanchMember, Task, User } from "../models";
 import { cancelTaskSchema } from "../validators/task.validator";
+import { errorResponse, successResponse } from "../utils/apiResponse";
 
 function buildUserName(user: any) {
     return [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
@@ -15,17 +16,21 @@ export async function createTask(req: Request, res: Response) {
         const ranchRole = req.membership!.ranchRole;
 
         if (!["owner", "manager"].includes(ranchRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only ranch owners or managers can assign tasks",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only ranch owners or managers can assign tasks",
+                })
+            );
         }
 
         const parsed = createTaskSchema.safeParse(req.body);
         if (!parsed.success) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Validation failed",
-                errors: parsed.error.flatten(),
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Validation failed",
+                    errors: parsed.error.flatten(),
+                })
+            );
         }
 
         const { title, description, assignedToUserPublicId, dueDate } = parsed.data;
@@ -36,9 +41,11 @@ export async function createTask(req: Request, res: Response) {
         });
 
         if (!assignee) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Assignee not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Assignee not found",
+                })
+            );
         }
 
         const membership = await RanchMember.findOne({
@@ -49,9 +56,11 @@ export async function createTask(req: Request, res: Response) {
         });
 
         if (!membership) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Assignee is not a member of this ranch",
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Assignee is not a member of this ranch",
+                })
+            );
         }
 
         const task = await Task.create({
@@ -63,27 +72,33 @@ export async function createTask(req: Request, res: Response) {
             due_date: dueDate ? new Date(dueDate) : null,
         });
 
-        return res.status(StatusCodes.CREATED).json({
-            message: "Task created successfully",
-            task: {
-                publicId: task.getDataValue("public_id"),
-                title: task.getDataValue("title"),
-                description: task.getDataValue("description"),
-                status: task.getDataValue("status"),
-                dueDate: task.getDataValue("due_date"),
-                assignedTo: {
-                    publicId: assignee.getDataValue("id"),
-                    name: buildUserName(assignee),
-                    email: assignee.getDataValue("email"),
+        return res.status(StatusCodes.CREATED).json(
+            successResponse({
+                message: "Task created successfully",
+                data: {
+                    task: {
+                        publicId: task.getDataValue("public_id"),
+                        title: task.getDataValue("title"),
+                        description: task.getDataValue("description"),
+                        status: task.getDataValue("status"),
+                        dueDate: task.getDataValue("due_date"),
+                        assignedTo: {
+                            publicId: assignee.getDataValue("id"),
+                            name: buildUserName(assignee),
+                            email: assignee.getDataValue("email"),
+                        },
+                    },
                 },
-            },
-        });
+            })
+        );
     } catch (err: any) {
         console.error("CREATE_TASK_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to create task",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to create task",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -119,36 +134,43 @@ export async function listTasks(req: Request, res: Response) {
             order: [["created_at", "DESC"]],
         });
 
-        return res.status(StatusCodes.OK).json({
-            tasks: tasks.map((task: any) => ({
-                publicId: task.public_id,
-                title: task.title,
-                description: task.description,
-                status: task.status,
-                dueDate: task.due_date,
-                createdAt: task.created_at,
-                assignedTo: task.assignedToUser
-                    ? {
-                        publicId: task.assignedToUser.id,
-                        name: buildUserName(task.assignedToUser),
-                        email: task.assignedToUser.email,
-                    }
-                    : null,
-                assignedBy: task.assignedByUser
-                    ? {
-                        publicId: task.assignedByUser.id,
-                        name: buildUserName(task.assignedByUser),
-                        email: task.assignedByUser.email,
-                    }
-                    : null,
-            })),
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Tasks fetched successfully",
+                data: {
+                    tasks: tasks.map((task: any) => ({
+                        publicId: task.public_id,
+                        title: task.title,
+                        description: task.description,
+                        status: task.status,
+                        dueDate: task.due_date,
+                        createdAt: task.created_at,
+                        assignedTo: task.assignedToUser
+                            ? {
+                                publicId: task.assignedToUser.id,
+                                name: buildUserName(task.assignedToUser),
+                                email: task.assignedToUser.email,
+                            }
+                            : null,
+                        assignedBy: task.assignedByUser
+                            ? {
+                                publicId: task.assignedByUser.id,
+                                name: buildUserName(task.assignedByUser),
+                                email: task.assignedByUser.email,
+                            }
+                            : null,
+                    })),
+                },
+            })
+        );
     } catch (err: any) {
         console.error("LIST_TASKS_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to list tasks",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to list tasks",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -161,10 +183,12 @@ export async function updateTaskStatus(req: Request, res: Response) {
 
         const parsed = updateTaskStatusSchema.safeParse(req.body);
         if (!parsed.success) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Validation failed",
-                errors: parsed.error.flatten(),
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Validation failed",
+                    errors: parsed.error.flatten(),
+                })
+            );
         }
 
         const task = await Task.findOne({
@@ -175,24 +199,30 @@ export async function updateTaskStatus(req: Request, res: Response) {
         });
 
         if (!task) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Task not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Task not found",
+                })
+            );
         }
 
         if (task.getDataValue("cancelled_at")) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Cancelled tasks cannot be updated",
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Cancelled tasks cannot be updated",
+                })
+            );
         }
 
         const isAssignee = task.getDataValue("assigned_to_user_id") === currentUserId;
         const canManage = ["owner", "manager"].includes(ranchRole);
 
         if (!isAssignee && !canManage) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "You are not allowed to update this task",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "You are not allowed to update this task",
+                })
+            );
         }
 
         const nextStatus = parsed.data.status;
@@ -206,28 +236,36 @@ export async function updateTaskStatus(req: Request, res: Response) {
             };
 
             if (!allowedTransitions[currentStatus]?.includes(nextStatus)) {
-                return res.status(StatusCodes.BAD_REQUEST).json({
-                    message: `Workers can only move task status from ${currentStatus} to ${allowedTransitions[currentStatus]?.join(", ") || "no further status"}`,
-                });
+                return res.status(StatusCodes.BAD_REQUEST).json(
+                    errorResponse({
+                        message: `Workers can only move task status from ${currentStatus} to ${allowedTransitions[currentStatus]?.join(", ") || "no further status"}`,
+                    })
+                );
             }
         }
 
         task.setDataValue("status", nextStatus);
         await task.save();
 
-        return res.status(StatusCodes.OK).json({
-            message: "Task status updated successfully",
-            task: {
-                publicId: task.getDataValue("public_id"),
-                status: task.getDataValue("status"),
-            },
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Task status updated successfully",
+                data: {
+                    task: {
+                        publicId: task.getDataValue("public_id"),
+                        status: task.getDataValue("status"),
+                    },
+                },
+            })
+        );
     } catch (err: any) {
         console.error("UPDATE_TASK_STATUS_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to update task status",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to update task status",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -239,17 +277,21 @@ export async function cancelTask(req: Request, res: Response) {
         const { taskPublicId } = req.params;
 
         if (!["owner", "manager"].includes(ranchRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only ranch owners or managers can cancel tasks",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only ranch owners or managers can cancel tasks",
+                })
+            );
         }
 
         const parsed = cancelTaskSchema.safeParse(req.body);
         if (!parsed.success) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Validation failed",
-                errors: parsed.error.flatten(),
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Validation failed",
+                    errors: parsed.error.flatten(),
+                })
+            );
         }
 
         const task = await Task.findOne({
@@ -260,21 +302,27 @@ export async function cancelTask(req: Request, res: Response) {
         });
 
         if (!task) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Task not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Task not found",
+                })
+            );
         }
 
         if (task.getDataValue("cancelled_at")) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Task is already cancelled",
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Task is already cancelled",
+                })
+            );
         }
 
         if (task.getDataValue("status") === "completed") {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Completed tasks cannot be cancelled",
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Completed tasks cannot be cancelled",
+                })
+            );
         }
 
         task.setDataValue("cancelled_at", new Date());
@@ -283,21 +331,27 @@ export async function cancelTask(req: Request, res: Response) {
 
         await task.save();
 
-        return res.status(StatusCodes.OK).json({
-            message: "Task cancelled successfully",
-            task: {
-                publicId: task.getDataValue("public_id"),
-                status: task.getDataValue("status"),
-                cancelledAt: task.getDataValue("cancelled_at"),
-                cancelReason: task.getDataValue("cancel_reason"),
-            },
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Task cancelled successfully",
+                data: {
+                    task: {
+                        publicId: task.getDataValue("public_id"),
+                        status: task.getDataValue("status"),
+                        cancelledAt: task.getDataValue("cancelled_at"),
+                        cancelReason: task.getDataValue("cancel_reason"),
+                    },
+                },
+            })
+        );
     } catch (err: any) {
         console.error("CANCEL_TASK_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to cancel task",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to cancel task",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -336,60 +390,71 @@ export async function getTaskByPublicId(req: Request, res: Response) {
         });
 
         if (!task) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Task not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Task not found",
+                })
+            );
         }
 
         const isAssignee = task.getDataValue("assigned_to_user_id") === currentUserId;
 
         if (!canManage && !isAssignee) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "You are not allowed to view this task",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "You are not allowed to view this task",
+                })
+            );
         }
 
         const taskData = task as any;
 
-        return res.status(StatusCodes.OK).json({
-            task: {
-                publicId: task.getDataValue("public_id"),
-                title: task.getDataValue("title"),
-                description: task.getDataValue("description"),
-                status: task.getDataValue("status"),
-                dueDate: task.getDataValue("due_date"),
-                createdAt: task.getDataValue("created_at"),
-                updatedAt: task.getDataValue("updated_at"),
-                cancelledAt: task.getDataValue("cancelled_at"),
-                cancelReason: task.getDataValue("cancel_reason"),
-                assignedTo: taskData.assignedToUser
-                    ? {
-                        publicId: taskData.assignedToUser.id,
-                        name: buildUserName(taskData.assignedToUser),
-                        email: taskData.assignedToUser.email,
-                    }
-                    : null,
-                assignedBy: taskData.assignedByUser
-                    ? {
-                        publicId: taskData.assignedByUser.id,
-                        name: buildUserName(taskData.assignedByUser),
-                        email: taskData.assignedByUser.email,
-                    }
-                    : null,
-                cancelledBy: taskData.cancelledByUser
-                    ? {
-                        publicId: taskData.cancelledByUser.id,
-                        name: buildUserName(taskData.cancelledByUser),
-                        email: taskData.cancelledByUser.email,
-                    }
-                    : null,
-            },
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Task fetched successfully",
+                data: {
+                    task: {
+                        publicId: task.getDataValue("public_id"),
+                        title: task.getDataValue("title"),
+                        description: task.getDataValue("description"),
+                        status: task.getDataValue("status"),
+                        dueDate: task.getDataValue("due_date"),
+                        createdAt: task.getDataValue("created_at"),
+                        updatedAt: task.getDataValue("updated_at"),
+                        cancelledAt: task.getDataValue("cancelled_at"),
+                        cancelReason: task.getDataValue("cancel_reason"),
+                        assignedTo: taskData.assignedToUser
+                            ? {
+                                publicId: taskData.assignedToUser.id,
+                                name: buildUserName(taskData.assignedToUser),
+                                email: taskData.assignedToUser.email,
+                            }
+                            : null,
+                        assignedBy: taskData.assignedByUser
+                            ? {
+                                publicId: taskData.assignedByUser.id,
+                                name: buildUserName(taskData.assignedByUser),
+                                email: taskData.assignedByUser.email,
+                            }
+                            : null,
+                        cancelledBy: taskData.cancelledByUser
+                            ? {
+                                publicId: taskData.cancelledByUser.id,
+                                name: buildUserName(taskData.cancelledByUser),
+                                email: taskData.cancelledByUser.email,
+                            }
+                            : null,
+                    },
+                },
+            })
+        );
     } catch (err: any) {
         console.error("GET_TASK_BY_PUBLIC_ID_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to fetch task",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to fetch task",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }

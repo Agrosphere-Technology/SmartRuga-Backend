@@ -4,9 +4,9 @@ import { QueryTypes } from "sequelize";
 import { Animal, sequelize } from "../models";
 import { RANCH_ROLES } from "../constants/roles";
 import z from "zod";
+import { errorResponse, successResponse } from "../utils/apiResponse";
 
 function canViewActivity(role: string) {
-    // keep it strict (best for now)
     return (
         role === RANCH_ROLES.OWNER ||
         role === RANCH_ROLES.MANAGER ||
@@ -42,10 +42,13 @@ type ActivityRow = {
 export async function listRanchActivity(req: Request, res: Response) {
     try {
         const requesterRole = req.membership!.ranchRole;
+
         if (!canViewActivity(requesterRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can view ranch activity",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only owner/manager/vet can view ranch activity",
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
@@ -143,66 +146,96 @@ export async function listRanchActivity(req: Request, res: Response) {
             }
         );
 
-        return res.status(StatusCodes.OK).json({
-            pagination: { page, limit, total, totalPages },
-            events: rows.map((r) => ({
-                id: r.id,
-                eventType: r.event_type,
-                field: r.field,
-                fromValue: r.from_value,
-                toValue: r.to_value,
-                notes: r.notes,
-                actor: {
-                    id: r.recorded_by,
-                    email: r.actor_email,
-                    firstName: r.actor_first_name,
-                    lastName: r.actor_last_name,
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Ranch activity fetched successfully",
+                data: {
+                    events: rows.map((r) => ({
+                        id: r.id,
+                        eventType: r.event_type,
+                        field: r.field,
+                        fromValue: r.from_value,
+                        toValue: r.to_value,
+                        notes: r.notes,
+                        actor: {
+                            id: r.recorded_by,
+                            email: r.actor_email,
+                            firstName: r.actor_first_name,
+                            lastName: r.actor_last_name,
+                        },
+                        animal: r.animal_id
+                            ? {
+                                id: r.animal_id,
+                                publicId: r.animal_public_id,
+                                tagNumber: r.animal_tag_number,
+                            }
+                            : null,
+                        createdAt: r.created_at,
+                    })),
                 },
-                animal: r.animal_id
-                    ? {
-                        id: r.animal_id,
-                        publicId: r.animal_public_id,
-                        tagNumber: r.animal_tag_number,
-                    }
-                    : null,
-                createdAt: r.created_at,
-            })),
-        });
+                meta: {
+                    pagination: {
+                        page,
+                        limit,
+                        total,
+                        totalPages,
+                    },
+                    filters: {
+                        eventType: eventType ?? null,
+                        animalId: animalId ?? null,
+                        userId: userId ?? null,
+                        from: from ?? null,
+                        to: to ?? null,
+                    },
+                },
+            })
+        );
     } catch (err: any) {
         console.error("LIST_RANCH_ACTIVITY_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to list ranch activity",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to list ranch activity",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
 export async function listAnimalActivity(req: Request, res: Response) {
     try {
         const requesterRole = req.membership!.ranchRole;
+
         if (!canViewActivity(requesterRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can view animal activity",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only owner/manager/vet can view animal activity",
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
         const { animalId } = req.params;
         const uuid = z.string().uuid();
 
-        // ensure animal belongs to ranch
+        if (animalId && !uuid.safeParse(animalId).success) {
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "animalId must be uuid",
+                })
+            );
+        }
+
         const animal = await Animal.findOne({
             where: { id: animalId, ranch_id: ranchId },
             attributes: ["id", "public_id", "tag_number"],
         } as any);
 
         if (!animal) {
-            return res.status(StatusCodes.NOT_FOUND).json({ message: "Animal not found" });
-        }
-
-
-        if (animalId && !uuid.safeParse(animalId).success) {
-            return res.status(400).json({ message: "animalId must be uuid" });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Animal not found",
+                })
+            );
         }
 
         const page = parseIntSafe(req.query.page, 1);
@@ -219,7 +252,6 @@ export async function listAnimalActivity(req: Request, res: Response) {
         );
 
         const total = countRows[0]?.total ?? 0;
-        // const totalPages = Math.max(1, Math.ceil(total / limit));
         const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
         const rows = await sequelize.query<ActivityRow>(
@@ -256,34 +288,48 @@ export async function listAnimalActivity(req: Request, res: Response) {
             }
         );
 
-        return res.status(StatusCodes.OK).json({
-            animal: {
-                id: animal.get("id"),
-                publicId: animal.get("public_id"),
-                tagNumber: animal.get("tag_number"),
-            },
-            pagination: { page, limit, total, totalPages },
-            events: rows.map((r) => ({
-                id: r.id,
-                eventType: r.event_type,
-                field: r.field,
-                fromValue: r.from_value,
-                toValue: r.to_value,
-                notes: r.notes,
-                actor: {
-                    id: r.recorded_by,
-                    email: r.actor_email,
-                    firstName: r.actor_first_name,
-                    lastName: r.actor_last_name,
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Animal activity fetched successfully",
+                data: {
+                    animal: {
+                        id: animal.get("id"),
+                        publicId: animal.get("public_id"),
+                        tagNumber: animal.get("tag_number"),
+                    },
+                    events: rows.map((r) => ({
+                        id: r.id,
+                        eventType: r.event_type,
+                        field: r.field,
+                        fromValue: r.from_value,
+                        toValue: r.to_value,
+                        notes: r.notes,
+                        actor: {
+                            id: r.recorded_by,
+                            email: r.actor_email,
+                            firstName: r.actor_first_name,
+                            lastName: r.actor_last_name,
+                        },
+                        createdAt: r.created_at,
+                    })),
                 },
-                createdAt: r.created_at,
-            })),
-        });
+                meta: {
+                    pagination: {
+                        page,
+                        limit,
+                        total,
+                        totalPages,
+                    },
+                },
+            })
+        );
     } catch (err: any) {
         console.error("LIST_ANIMAL_ACTIVITY_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to list animal activity",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to list animal activity",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }

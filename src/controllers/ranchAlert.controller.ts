@@ -11,25 +11,30 @@ import {
     canViewAlerts,
     formatRanchAlert,
 } from "../helpers/ranchAlert.helpers";
+import { errorResponse, successResponse } from "../utils/apiResponse";
 
 export async function listRanchAlerts(req: Request, res: Response) {
     try {
         const requesterRole = req.membership!.ranchRole;
 
         if (!canViewAlerts(requesterRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can view ranch alerts",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only owner/manager/vet can view ranch alerts",
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
 
         const parsed = listRanchAlertsQuerySchema.safeParse(req.query);
         if (!parsed.success) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Validation failed",
-                errors: parsed.error.flatten(),
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Validation failed",
+                    errors: parsed.error.flatten(),
+                })
+            );
         }
 
         const { page, limit, unread, alertType, animalId, from, to } = parsed.data;
@@ -41,7 +46,7 @@ export async function listRanchAlerts(req: Request, res: Response) {
         };
 
         if (typeof unread === "boolean") {
-            whereClause.is_read = !unread ? true : false;
+            whereClause.is_read = unread ? false : true;
         }
 
         if (alertType?.length) {
@@ -96,24 +101,40 @@ export async function listRanchAlerts(req: Request, res: Response) {
             },
         });
 
-        return res.status(StatusCodes.OK).json({
-            alerts: rows.map((alert) => formatRanchAlert(alert)),
-            unreadCount,
-            pagination: {
-                page,
-                limit,
-                totalItems,
-                totalPages,
-                hasNextPage: page < totalPages,
-                hasPreviousPage: page > 1,
-            },
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Ranch alerts fetched successfully",
+                data: {
+                    alerts: rows.map((alert) => formatRanchAlert(alert)),
+                },
+                meta: {
+                    unreadCount,
+                    pagination: {
+                        page,
+                        limit,
+                        totalItems,
+                        totalPages,
+                        hasNextPage: page < totalPages,
+                        hasPreviousPage: page > 1,
+                    },
+                    filters: {
+                        unread: typeof unread === "boolean" ? unread : null,
+                        alertType: alertType ?? [],
+                        animalId: animalId ?? null,
+                        from: from ?? null,
+                        to: to ?? null,
+                    },
+                },
+            })
+        );
     } catch (err: any) {
         console.error("LIST_RANCH_ALERTS_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to list ranch alerts",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to list ranch alerts",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -122,9 +143,11 @@ export async function getUnreadRanchAlertsCount(req: Request, res: Response) {
         const requesterRole = req.membership!.ranchRole;
 
         if (!canViewAlerts(requesterRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can view ranch alerts",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only owner/manager/vet can view ranch alerts",
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
@@ -136,15 +159,22 @@ export async function getUnreadRanchAlertsCount(req: Request, res: Response) {
             },
         });
 
-        return res.status(StatusCodes.OK).json({
-            unreadCount,
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Unread ranch alerts count fetched successfully",
+                data: {
+                    unreadCount,
+                },
+            })
+        );
     } catch (err: any) {
         console.error("GET_UNREAD_RANCH_ALERTS_COUNT_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to fetch unread ranch alerts count",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to fetch unread ranch alerts count",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -153,9 +183,11 @@ export async function markAlertRead(req: Request, res: Response) {
         const requesterRole = req.membership!.ranchRole;
 
         if (!canManageAlerts(requesterRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can update alerts",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only owner/manager/vet can update alerts",
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
@@ -170,9 +202,11 @@ export async function markAlertRead(req: Request, res: Response) {
         });
 
         if (!alert) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Alert not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Alert not found",
+                })
+            );
         }
 
         if (alert.getDataValue("is_read")) {
@@ -195,10 +229,14 @@ export async function markAlertRead(req: Request, res: Response) {
                 ],
             });
 
-            return res.status(StatusCodes.OK).json({
-                message: "Alert already marked as read",
-                alert: existingAlert ? formatRanchAlert(existingAlert) : null,
-            });
+            return res.status(StatusCodes.OK).json(
+                successResponse({
+                    message: "Alert already marked as read",
+                    data: {
+                        alert: existingAlert ? formatRanchAlert(existingAlert) : null,
+                    },
+                })
+            );
         }
 
         await alert.update({
@@ -227,16 +265,22 @@ export async function markAlertRead(req: Request, res: Response) {
             ],
         });
 
-        return res.status(StatusCodes.OK).json({
-            message: "Alert marked as read successfully",
-            alert: updatedAlert ? formatRanchAlert(updatedAlert) : null,
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Alert marked as read successfully",
+                data: {
+                    alert: updatedAlert ? formatRanchAlert(updatedAlert) : null,
+                },
+            })
+        );
     } catch (err: any) {
         console.error("MARK_RANCH_ALERT_AS_READ_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to mark ranch alert as read",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to mark ranch alert as read",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -245,9 +289,11 @@ export async function markAlertsReadBulk(req: Request, res: Response) {
         const requesterRole = req.membership!.ranchRole;
 
         if (!canManageAlerts(requesterRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can update alerts",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only owner/manager/vet can update alerts",
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
@@ -255,10 +301,12 @@ export async function markAlertsReadBulk(req: Request, res: Response) {
 
         const parsed = bulkReadSchema.safeParse(req.body);
         if (!parsed.success) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Validation failed",
-                errors: parsed.error.flatten(),
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Validation failed",
+                    errors: parsed.error.flatten(),
+                })
+            );
         }
 
         const { alertIds } = parsed.data;
@@ -281,16 +329,22 @@ export async function markAlertsReadBulk(req: Request, res: Response) {
             }
         );
 
-        return res.status(StatusCodes.OK).json({
-            message: "Alerts marked as read successfully",
-            updatedCount,
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Alerts marked as read successfully",
+                data: {
+                    updatedCount,
+                },
+            })
+        );
     } catch (err: any) {
         console.error("MARK_ALERTS_READ_BULK_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to mark alerts as read",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to mark alerts as read",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -299,9 +353,11 @@ export async function markAllRanchAlertsAsRead(req: Request, res: Response) {
         const requesterRole = req.membership!.ranchRole;
 
         if (!canManageAlerts(requesterRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can update alerts",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only owner/manager/vet can update alerts",
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
@@ -322,15 +378,21 @@ export async function markAllRanchAlertsAsRead(req: Request, res: Response) {
             }
         );
 
-        return res.status(StatusCodes.OK).json({
-            message: "All unread alerts marked as read successfully",
-            updatedCount,
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "All unread alerts marked as read successfully",
+                data: {
+                    updatedCount,
+                },
+            })
+        );
     } catch (err: any) {
         console.error("MARK_ALL_RANCH_ALERTS_AS_READ_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to mark all ranch alerts as read",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to mark all ranch alerts as read",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }

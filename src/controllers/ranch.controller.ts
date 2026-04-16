@@ -3,14 +3,19 @@ import slugify from "slugify";
 import { Ranch, RanchMember } from "../models";
 import { createRanchSchema } from "../validators/ranch.validator";
 import { StatusCodes } from "http-status-codes";
+import { errorResponse, successResponse } from "../utils/apiResponse";
 
 export async function createRanch(req: Request, res: Response) {
   try {
     const parsed = createRanchSchema.safeParse(req.body);
+
     if (!parsed.success) {
-      return res
-        .status(StatusCodes.BAD_REQUEST)
-        .json({ message: "Invalid payload", issues: parsed.error.issues });
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Invalid payload",
+          errors: parsed.error.issues,
+        })
+      );
     }
 
     const userId = req.user!.id;
@@ -41,29 +46,35 @@ export async function createRanch(req: Request, res: Response) {
       status: "active",
     } as any);
 
-    return res.status(StatusCodes.CREATED).json({
-      ranch: {
-        id: ranch.get("id"),
-        name: ranch.get("name"),
-        slug: ranch.get("slug"),
-        locationName: ranch.get("location_name") ?? null,
-        address: ranch.get("address") ?? null,
-        latitude: ranch.get("latitude") ?? null,
-        longitude: ranch.get("longitude") ?? null,
-      },
-      membership: {
-        id: membership.get("id"),
-        role: membership.get("role"),
-        status: membership.get("status"),
-      },
-    });
+    return res.status(StatusCodes.CREATED).json(
+      successResponse({
+        message: "Ranch created successfully",
+        data: {
+          ranch: {
+            id: ranch.get("id"),
+            name: ranch.get("name"),
+            slug: ranch.get("slug"),
+            locationName: ranch.get("location_name") ?? null,
+            address: ranch.get("address") ?? null,
+            latitude: ranch.get("latitude") ?? null,
+            longitude: ranch.get("longitude") ?? null,
+          },
+          membership: {
+            id: membership.get("id"),
+            role: membership.get("role"),
+            status: membership.get("status"),
+          },
+        },
+      })
+    );
   } catch (err: any) {
     console.error("CREATE_RANCH_ERROR:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: "Failed to create ranch",
-      error: err?.message ?? "Unknown error",
-      details: err?.errors ?? null,
-    });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to create ranch",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }
 
@@ -88,14 +99,22 @@ export async function listAllRanches(req: Request, res: Response) {
       };
     });
 
-    return res.status(StatusCodes.OK).json({ ranches });
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Ranches fetched successfully",
+        data: {
+          ranches,
+        },
+      })
+    );
   } catch (err: any) {
     console.error("LIST_RANCHES_ERROR:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: "Failed to list ranches",
-      error: err?.message ?? "Unknown error",
-      details: err?.errors ?? null,
-    });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to list ranches",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }
 
@@ -105,10 +124,13 @@ export async function getRanchBySlug(req: Request, res: Response) {
     const { slug } = req.params;
 
     const ranch = await Ranch.findOne({ where: { slug } });
+
     if (!ranch) {
-      return res
-        .status(StatusCodes.NOT_FOUND)
-        .json({ message: "Ranch not found" });
+      return res.status(StatusCodes.NOT_FOUND).json(
+        errorResponse({
+          message: "Ranch not found",
+        })
+      );
     }
 
     const membership = await RanchMember.findOne({
@@ -116,39 +138,49 @@ export async function getRanchBySlug(req: Request, res: Response) {
     });
 
     if (!membership) {
-      return res
-        .status(StatusCodes.FORBIDDEN)
-        .json({ message: "Access denied" });
+      return res.status(StatusCodes.FORBIDDEN).json(
+        errorResponse({
+          message: "Access denied",
+        })
+      );
     }
 
     if (membership.get("status") !== "active") {
-      return res
-        .status(StatusCodes.FORBIDDEN)
-        .json({ message: "Membership not active" });
+      return res.status(StatusCodes.FORBIDDEN).json(
+        errorResponse({
+          message: "Membership not active",
+        })
+      );
     }
 
-    return res.status(StatusCodes.OK).json({
-      ranch: {
-        id: ranch.get("id"),
-        name: ranch.get("name"),
-        slug: ranch.get("slug"),
-        locationName: ranch.get("location_name") ?? null,
-        address: ranch.get("address") ?? null,
-        latitude: ranch.get("latitude") ?? null,
-        longitude: ranch.get("longitude") ?? null,
-      },
-      membership: {
-        id: membership.get("id"),
-        role: membership.get("role"),
-        status: membership.get("status"),
-      },
-    });
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Ranch fetched successfully",
+        data: {
+          ranch: {
+            id: ranch.get("id"),
+            name: ranch.get("name"),
+            slug: ranch.get("slug"),
+            locationName: ranch.get("location_name") ?? null,
+            address: ranch.get("address") ?? null,
+            latitude: ranch.get("latitude") ?? null,
+            longitude: ranch.get("longitude") ?? null,
+          },
+          membership: {
+            id: membership.get("id"),
+            role: membership.get("role"),
+            status: membership.get("status"),
+          },
+        },
+      })
+    );
   } catch (err: any) {
     console.error("GET_RANCH_ERROR:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: "Failed to fetch ranch",
-      error: err?.message ?? "Unknown error",
-      details: err?.errors ?? null,
-    });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to fetch ranch",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }

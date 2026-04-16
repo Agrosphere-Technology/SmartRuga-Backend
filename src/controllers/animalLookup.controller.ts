@@ -7,6 +7,7 @@ import {
     animalLookupSchema,
     bulkAnimalLookupSchema,
 } from "../validators/animalLookup.validator";
+import { errorResponse, successResponse } from "../utils/apiResponse";
 
 function mapAnimalResponse(animal: any) {
     return {
@@ -32,10 +33,12 @@ export async function lookupAnimal(req: Request, res: Response) {
         const parsed = animalLookupSchema.safeParse(req.query);
 
         if (!parsed.success) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Invalid lookup query",
-                issues: parsed.error.issues,
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Invalid lookup query",
+                    errors: parsed.error.issues,
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
@@ -61,20 +64,29 @@ export async function lookupAnimal(req: Request, res: Response) {
         } as any);
 
         if (!animal) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Animal not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Animal not found",
+                })
+            );
         }
 
-        return res.status(StatusCodes.OK).json({
-            animal: mapAnimalResponse(animal),
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Animal looked up successfully",
+                data: {
+                    animal: mapAnimalResponse(animal),
+                },
+            })
+        );
     } catch (err: any) {
         console.error("LOOKUP_ANIMAL_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to look up animal",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to look up animal",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -83,10 +95,12 @@ export async function bulkLookupAnimals(req: Request, res: Response) {
         const parsed = bulkAnimalLookupSchema.safeParse(req.body);
 
         if (!parsed.success) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Invalid payload",
-                issues: parsed.error.issues,
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Invalid payload",
+                    errors: parsed.error.issues,
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
@@ -139,15 +153,22 @@ export async function bulkLookupAnimals(req: Request, res: Response) {
             }
         }
 
-        return res.status(StatusCodes.OK).json({
-            found,
-            notFound,
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Bulk animal lookup completed successfully",
+                data: {
+                    found,
+                    notFound,
+                },
+            })
+        );
     } catch (err: any) {
         console.error("BULK_LOOKUP_ANIMALS_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to bulk look up animals",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to bulk look up animals",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }

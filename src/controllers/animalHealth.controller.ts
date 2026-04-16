@@ -5,6 +5,7 @@ import z from "zod";
 import { createRanchAlert } from "../services/ranchAlert.service";
 import { Animal, sequelize } from "../models";
 import { RANCH_ROLES } from "../constants/roles";
+import { errorResponse, successResponse } from "../utils/apiResponse";
 
 type InsertedHealthEventRow = {
     id: string;
@@ -95,10 +96,12 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
     try {
         const parsed = addHealthSchema.safeParse(req.body);
         if (!parsed.success) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Invalid payload",
-                issues: parsed.error.issues,
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Invalid payload",
+                    errors: parsed.error.issues,
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
@@ -106,9 +109,11 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
         const requesterRole = req.membership!.ranchRole;
 
         if (!canAddHealth(requesterRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can add health records",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only owner/manager/vet can add health records",
+                })
+            );
         }
 
         const animal = await Animal.findOne({
@@ -117,9 +122,11 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
         } as any);
 
         if (!animal) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Animal not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Animal not found",
+                })
+            );
         }
 
         const internalAnimalId = String(animal.get("id"));
@@ -189,34 +196,39 @@ export async function addAnimalHealthEvent(req: Request, res: Response) {
 
         await t.commit();
 
-        return res.status(StatusCodes.CREATED).json({
-            message: "Health event recorded",
-            animal: {
-                id: internalAnimalId,
-                publicId: animalPublicId,
-                tagNumber: animalTagNumber,
-            },
-            healthEvent: {
-                id: event.id,
-                publicId: event.public_id,
-                status: event.status,
-                notes: event.notes,
-                recordedBy: event.recorded_by,
-                createdAt: event.created_at,
-            },
-            healthStatus: event.status,
-        });
+        return res.status(StatusCodes.CREATED).json(
+            successResponse({
+                message: "Health event recorded successfully",
+                data: {
+                    animal: {
+                        id: internalAnimalId,
+                        publicId: animalPublicId,
+                        tagNumber: animalTagNumber,
+                    },
+                    healthEvent: {
+                        id: event.id,
+                        publicId: event.public_id,
+                        status: event.status,
+                        notes: event.notes,
+                        recordedBy: event.recorded_by,
+                        createdAt: event.created_at,
+                    },
+                    healthStatus: event.status,
+                },
+            })
+        );
     } catch (err: any) {
         if (t) {
             await t.rollback();
         }
 
         console.error("ADD_ANIMAL_HEALTH_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to add animal health event",
-            error: err?.message ?? "Unknown error",
-            details: err?.errors ?? null,
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to add animal health event",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -226,9 +238,11 @@ export async function listAnimalHealth(req: Request, res: Response) {
         const requesterRole = req.membership!.ranchRole;
 
         if (!canViewHealth(requesterRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can view health history",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only owner/manager/vet can view health history",
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
@@ -240,9 +254,11 @@ export async function listAnimalHealth(req: Request, res: Response) {
         } as any);
 
         if (!animal) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Animal not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Animal not found",
+                })
+            );
         }
 
         const internalAnimalId = String(animal.get("id"));
@@ -260,21 +276,28 @@ export async function listAnimalHealth(req: Request, res: Response) {
             }
         );
 
-        return res.status(StatusCodes.OK).json({
-            healthEvents: rows.map((r) => ({
-                id: r.id,
-                publicId: r.public_id,
-                status: r.status,
-                notes: r.notes,
-                createdAt: r.created_at,
-            })),
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Animal health records fetched successfully",
+                data: {
+                    healthEvents: rows.map((r) => ({
+                        id: r.id,
+                        publicId: r.public_id,
+                        status: r.status,
+                        notes: r.notes,
+                        createdAt: r.created_at,
+                    })),
+                },
+            })
+        );
     } catch (err: any) {
         console.error("LIST_ANIMAL_HEALTH_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to list animal health history",
-            error: err?.message ?? "Unknown error",
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to list animal health history",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -284,9 +307,11 @@ export async function getAnimalLatestHealth(req: Request, res: Response) {
         const requesterRole = req.membership!.ranchRole;
 
         if (!canViewHealth(requesterRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can view health",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only owner/manager/vet can view health",
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
@@ -298,9 +323,11 @@ export async function getAnimalLatestHealth(req: Request, res: Response) {
         } as any);
 
         if (!animal) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Animal not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Animal not found",
+                })
+            );
         }
 
         const internalAnimalId = String(animal.get("id"));
@@ -321,30 +348,36 @@ export async function getAnimalLatestHealth(req: Request, res: Response) {
 
         const latest = rows[0] ?? null;
 
-        return res.status(StatusCodes.OK).json({
-            animal: {
-                id: animal.get("id"),
-                publicId: animal.get("public_id"),
-                tagNumber: animal.get("tag_number"),
-            },
-            latest: latest
-                ? {
-                    id: latest.id,
-                    publicId: latest.public_id,
-                    status: latest.status,
-                    notes: latest.notes,
-                    createdAt: latest.created_at,
-                }
-                : null,
-            healthStatus: latest?.status ?? "healthy",
-        });
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Latest animal health fetched successfully",
+                data: {
+                    animal: {
+                        id: animal.get("id"),
+                        publicId: animal.get("public_id"),
+                        tagNumber: animal.get("tag_number"),
+                    },
+                    latest: latest
+                        ? {
+                            id: latest.id,
+                            publicId: latest.public_id,
+                            status: latest.status,
+                            notes: latest.notes,
+                            createdAt: latest.created_at,
+                        }
+                        : null,
+                    healthStatus: latest?.status ?? "healthy",
+                },
+            })
+        );
     } catch (err: any) {
         console.error("GET_LATEST_HEALTH_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to fetch latest health",
-            error: err?.message ?? "Unknown error",
-            details: err?.errors ?? null,
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to fetch latest health",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }
 
@@ -354,9 +387,11 @@ export async function listAnimalHealthHistory(req: Request, res: Response) {
         const requesterRole = req.membership!.ranchRole;
 
         if (!canViewHealth(requesterRole)) {
-            return res.status(StatusCodes.FORBIDDEN).json({
-                message: "Only owner/manager/vet can view health history",
-            });
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only owner/manager/vet can view health history",
+                })
+            );
         }
 
         const ranchId = req.ranch!.id;
@@ -364,10 +399,12 @@ export async function listAnimalHealthHistory(req: Request, res: Response) {
 
         const parsedQ = historyQuerySchema.safeParse(req.query);
         if (!parsedQ.success) {
-            return res.status(StatusCodes.BAD_REQUEST).json({
-                message: "Invalid query params",
-                issues: parsedQ.error.issues,
-            });
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Invalid query params",
+                    errors: parsedQ.error.issues,
+                })
+            );
         }
 
         const { page, limit, status, from, to } = parsedQ.data;
@@ -379,9 +416,11 @@ export async function listAnimalHealthHistory(req: Request, res: Response) {
         } as any);
 
         if (!animal) {
-            return res.status(StatusCodes.NOT_FOUND).json({
-                message: "Animal not found",
-            });
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Animal not found",
+                })
+            );
         }
 
         const internalAnimalId = String(animal.get("id"));
@@ -397,9 +436,11 @@ export async function listAnimalHealthHistory(req: Request, res: Response) {
         if (from) {
             const fromDate = parseDateOnlyToUTCStart(from);
             if (!fromDate) {
-                return res.status(StatusCodes.BAD_REQUEST).json({
-                    message: "from must be YYYY-MM-DD",
-                });
+                return res.status(StatusCodes.BAD_REQUEST).json(
+                    errorResponse({
+                        message: "from must be YYYY-MM-DD",
+                    })
+                );
             }
 
             bind.push(fromDate);
@@ -409,9 +450,11 @@ export async function listAnimalHealthHistory(req: Request, res: Response) {
         if (to) {
             const toDateExclusive = parseDateOnlyToUTCEndExclusive(to);
             if (!toDateExclusive) {
-                return res.status(StatusCodes.BAD_REQUEST).json({
-                    message: "to must be YYYY-MM-DD",
-                });
+                return res.status(StatusCodes.BAD_REQUEST).json(
+                    errorResponse({
+                        message: "to must be YYYY-MM-DD",
+                    })
+                );
             }
 
             bind.push(toDateExclusive);
@@ -465,43 +508,51 @@ export async function listAnimalHealthHistory(req: Request, res: Response) {
             }
         );
 
-        return res.status(StatusCodes.OK).json({
-            animal: {
-                id: animal.get("id"),
-                publicId: animal.get("public_id"),
-                tagNumber: animal.get("tag_number"),
-            },
-            filters: {
-                status: status ?? null,
-                from: from ?? null,
-                to: to ?? null,
-            },
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages,
-            },
-            events: rows.map((r) => ({
-                id: r.id,
-                publicId: r.public_id,
-                status: r.status,
-                notes: r.notes,
-                recordedBy: {
-                    id: r.recorded_by,
-                    email: r.recorded_by_email,
-                    firstName: r.recorded_by_first_name,
-                    lastName: r.recorded_by_last_name,
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Animal health history fetched successfully",
+                data: {
+                    animal: {
+                        id: animal.get("id"),
+                        publicId: animal.get("public_id"),
+                        tagNumber: animal.get("tag_number"),
+                    },
+                    events: rows.map((r) => ({
+                        id: r.id,
+                        publicId: r.public_id,
+                        status: r.status,
+                        notes: r.notes,
+                        recordedBy: {
+                            id: r.recorded_by,
+                            email: r.recorded_by_email,
+                            firstName: r.recorded_by_first_name,
+                            lastName: r.recorded_by_last_name,
+                        },
+                        createdAt: r.created_at,
+                    })),
                 },
-                createdAt: r.created_at,
-            })),
-        });
+                meta: {
+                    filters: {
+                        status: status ?? null,
+                        from: from ?? null,
+                        to: to ?? null,
+                    },
+                    pagination: {
+                        page,
+                        limit,
+                        total,
+                        totalPages,
+                    },
+                },
+            })
+        );
     } catch (err: any) {
         console.error("LIST_ANIMAL_HEALTH_HISTORY_ERROR:", err);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            message: "Failed to list animal health history",
-            error: err?.message ?? "Unknown error",
-            details: err?.errors ?? null,
-        });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to list animal health history",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
     }
 }

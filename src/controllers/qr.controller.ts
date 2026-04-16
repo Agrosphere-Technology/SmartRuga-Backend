@@ -4,6 +4,7 @@ import { Animal, Species } from "../models";
 import { buildAnimalQrUrl } from "../utils/qr";
 import { StatusCodes } from "http-status-codes";
 import { getLatestHealthForAnimals } from "../services/animalHealth.service";
+import { errorResponse, successResponse } from "../utils/apiResponse";
 
 export async function qrScanAnimal(req: Request, res: Response) {
   try {
@@ -17,12 +18,15 @@ export async function qrScanAnimal(req: Request, res: Response) {
     });
 
     if (!animal) {
-      return res.status(StatusCodes.NOT_FOUND).send("Animal not found");
+      return res.status(StatusCodes.NOT_FOUND).json(
+        errorResponse({
+          message: "Animal not found",
+        })
+      );
     }
 
     const animalId = animal.get("id") as string;
 
-    // ✅ latest health (from service)
     const healthMap = await getLatestHealthForAnimals([animalId]);
     const healthStatus = healthMap[animalId] ?? "healthy";
 
@@ -45,22 +49,33 @@ export async function qrScanAnimal(req: Request, res: Response) {
       `);
     }
 
-    return res.json({
-      publicId: animal.get("public_id"),
-      tagNumber: animal.get("tag_number"),
-      sex: animal.get("sex"),
-      status: animal.get("status"),
-      healthStatus,
-      species: {
-        id: (animal as any).species?.id,
-        name: (animal as any).species?.name,
-        code: (animal as any).species?.code,
-      },
-    });
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Animal QR profile fetched successfully",
+        data: {
+          animal: {
+            publicId: animal.get("public_id"),
+            tagNumber: animal.get("tag_number"),
+            sex: animal.get("sex"),
+            status: animal.get("status"),
+            healthStatus,
+            qrUrl: buildAnimalQrUrl(animal.get("public_id") as string),
+            species: {
+              id: (animal as any).species?.id ?? null,
+              name: (animal as any).species?.name ?? null,
+              code: (animal as any).species?.code ?? null,
+            },
+          },
+        },
+      })
+    );
   } catch (err: any) {
     console.error("QR_SCAN_ERROR:", err);
-    return res
-      .status(StatusCodes.INTERNAL_SERVER_ERROR)
-      .send("Failed to load animal");
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to load animal",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
   }
 }
