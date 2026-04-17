@@ -12,8 +12,11 @@ import {
     listRecentInventoryMovements,
     listStockMovements,
     recordStockMovement,
+    removeInventoryItemImage,
     updateInventoryItem,
+    uploadInventoryItemImage,
 } from "../controllers/inventory.controller";
+import { upload } from "../middlewares/upload";
 
 const router = Router();
 
@@ -282,24 +285,6 @@ router.get(
  *     responses:
  *       200:
  *         description: Recent inventory movements returned successfully
- *         content:
- *           application/json:
- *             example:
- *               movements:
- *                 - publicId: movement-uuid
- *                   type: stock_out
- *                   quantity: 10
- *                   previousQuantity: 50
- *                   newQuantity: 40
- *                   reason: Used for treatment
- *                   createdAt: 2026-04-01T12:00:00.000Z
- *                   item:
- *                     publicId: item-uuid
- *                     name: Anthrax Vaccine
- *                     category: vaccine
- *                     unit: dose
- *                   recordedByUser:
- *                     email: superadmin@smartruga.com
  *       401:
  *         description: Unauthorized
  */
@@ -544,6 +529,92 @@ router.get(
     requireAuth(),
     requireRanchAccess("slug"),
     listStockMovements
+);
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/inventory-items/{itemPublicId}/image:
+ *   post:
+ *     summary: Upload or replace inventory item image
+ *     description: Uploads or replaces an image for a single inventory item.
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: itemPublicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - image
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Inventory image uploaded successfully
+ *       400:
+ *         description: Image file is required
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Inventory item not found
+ *
+ *   delete:
+ *     summary: Remove inventory item image
+ *     description: Removes the current image from a single inventory item.
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: itemPublicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Inventory image removed successfully
+ *       400:
+ *         description: Item has no image
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Inventory item not found
+ */
+router.post(
+    "/:slug/inventory-items/:itemPublicId/image",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    upload.single("image"),
+    uploadInventoryItemImage
+);
+
+router.delete(
+    "/:slug/inventory-items/:itemPublicId/image",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    removeInventoryItemImage
 );
 
 export default router;

@@ -1,3 +1,4 @@
+import { v2 as cloudinary } from "cloudinary";
 import { Request, Response } from "express";
 import { Op, WhereOptions, fn, col, literal } from "sequelize";
 import { StatusCodes } from "http-status-codes";
@@ -67,6 +68,8 @@ function formatInventoryItem(item: any) {
         unit: pickValue(item, ["unit"]),
         sku: pickValue(item, ["sku"]),
         description: pickValue(item, ["description"]),
+        imageUrl: pickValue(item, ["image_url", "imageUrl"]),
+        imagePublicId: pickValue(item, ["image_public_id", "imagePublicId"]),
         quantityOnHand,
         reorderLevel,
         isLowStock: quantityOnHand <= reorderLevel,
@@ -76,6 +79,36 @@ function formatInventoryItem(item: any) {
         createdByUser: formatUser(createdByUser),
         updatedByUser: formatUser(updatedByUser),
     };
+}
+
+function uploadBufferToCloudinary(
+    fileBuffer: Buffer,
+    folder: string,
+    publicId: string
+): Promise<{ secure_url: string; public_id: string }> {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder,
+                public_id: publicId,
+                resource_type: "image",
+                overwrite: true,
+            },
+            (error, result) => {
+                if (error || !result) {
+                    reject(error ?? new Error("Image upload failed"));
+                    return;
+                }
+
+                resolve({
+                    secure_url: result.secure_url,
+                    public_id: result.public_id,
+                });
+            }
+        );
+
+        stream.end(fileBuffer);
+    });
 }
 
 // Create Inventory Item
@@ -989,6 +1022,164 @@ export async function listStockMovements(req: Request, res: Response) {
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
             errorResponse({
                 message: "Failed to list stock movements",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
+    }
+}
+
+export async function uploadInventoryItemImage(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+        const ranchRole = req.membership!.ranchRole;
+        const { itemPublicId } = req.params;
+
+        if (!ALLOWED_INVENTORY_MANAGERS.includes(ranchRole)) {
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Forbidden",
+                })
+            );
+        }
+
+        if (!req.file) {
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({ message: "Image file is required" })
+            );
+        }
+
+        const item = await InventoryItem.findOne({
+            where: { public_id: itemPublicId, ranch_id: ranchId },
+            include: [
+                { model: User, as: "createdByUser" },
+                { model: User, as: "updatedByUser" },
+            ],
+        });
+
+        if (!item) {
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({ message: "Inventory item not found" })
+            );
+        }
+
+        const existingImagePublicId = pickValue(item, [
+            "image_public_id",
+            "imagePublicId",
+        ]);
+
+        if (existingImagePublicId) {
+            await cloudinary.uploader.destroy(String(existingImagePublicId));
+        }
+
+        const itemPublicIdResolved = String(
+            pickValue(item, ["public_id", "publicId"])
+        );
+
+        const uploadResult = await uploadBufferToCloudinary(
+            req.file.buffer,
+            `smartruga/inventory/${ranchId}`,
+            `inventory-item-${itemPublicIdResolved}`
+        );
+
+        await item.update({
+            image_url: uploadResult.secure_url,
+            image_public_id: uploadResult.public_id,
+        });
+
+        const updatedItem = await InventoryItem.findOne({
+            where: { public_id: itemPublicId, ranch_id: ranchId },
+            include: [
+                { model: User, as: "createdByUser" },
+                { model: User, as: "updatedByUser" },
+            ],
+        });
+
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Inventory image uploaded successfully",
+                data: {
+                    item: formatInventoryItem(updatedItem),
+                },
+            })
+        );
+    } catch (err: any) {
+        console.error("UPLOAD_INVENTORY_IMAGE_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to upload inventory image",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
+    }
+}
+
+export async function removeInventoryItemImage(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+        const ranchRole = req.membership!.ranchRole;
+        const { itemPublicId } = req.params;
+
+        if (!ALLOWED_INVENTORY_MANAGERS.includes(ranchRole)) {
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Forbidden",
+                })
+            );
+        }
+
+        const item = await InventoryItem.findOne({
+            where: { public_id: itemPublicId, ranch_id: ranchId },
+            include: [
+                { model: User, as: "createdByUser" },
+                { model: User, as: "updatedByUser" },
+            ],
+        });
+
+        if (!item) {
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({ message: "Inventory item not found" })
+            );
+        }
+
+        const imagePublicId = pickValue(item, [
+            "image_public_id",
+            "imagePublicId",
+        ]);
+
+        if (!imagePublicId) {
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({ message: "Item has no image" })
+            );
+        }
+
+        await cloudinary.uploader.destroy(String(imagePublicId));
+
+        await item.update({
+            image_url: null,
+            image_public_id: null,
+        });
+
+        const updatedItem = await InventoryItem.findOne({
+            where: { public_id: itemPublicId, ranch_id: ranchId },
+            include: [
+                { model: User, as: "createdByUser" },
+                { model: User, as: "updatedByUser" },
+            ],
+        });
+
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Inventory image removed successfully",
+                data: {
+                    item: formatInventoryItem(updatedItem),
+                },
+            })
+        );
+    } catch (err: any) {
+        console.error("REMOVE_INVENTORY_IMAGE_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to remove inventory image",
                 errors: err?.message ?? "Unknown error",
             })
         );

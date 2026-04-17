@@ -48,6 +48,16 @@ export function InventoryItemFactory(sequelize: Sequelize) {
                 allowNull: true,
             },
 
+            image_url: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+            },
+
+            image_public_id: {
+                type: DataTypes.STRING(255),
+                allowNull: true,
+            },
+
             quantity_on_hand: {
                 type: DataTypes.DECIMAL(12, 2),
                 allowNull: false,
