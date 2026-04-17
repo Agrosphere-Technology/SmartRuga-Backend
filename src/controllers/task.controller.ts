@@ -1,7 +1,11 @@
 import { v2 as cloudinary } from "cloudinary";
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
-import { cancelTaskSchema, createTaskSchema, updateTaskStatusSchema } from "../validators/task.validator";
+import {
+    cancelTaskSchema,
+    createTaskSchema,
+    updateTaskStatusSchema,
+} from "../validators/task.validator";
 import { RanchMember, Task, User } from "../models";
 import { errorResponse, successResponse } from "../utils/apiResponse";
 
@@ -39,10 +43,48 @@ function uploadBufferToCloudinary(
     });
 }
 
+function startOfDay(date: Date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+function diffInDays(from: Date, to: Date) {
+    const msPerDay = 1000 * 60 * 60 * 24;
+    return Math.floor(
+        (startOfDay(to).getTime() - startOfDay(from).getTime()) / msPerDay
+    );
+}
+
+function getOverdueMeta(task: any) {
+    const dueDateRaw = task.getDataValue?.("due_date") ?? task.due_date ?? null;
+    const cancelledAt =
+        task.getDataValue?.("cancelled_at") ?? task.cancelled_at ?? null;
+    const status = task.getDataValue?.("status") ?? task.status;
+
+    if (!dueDateRaw || cancelledAt || status === "completed") {
+        return {
+            isOverdue: false,
+            daysOverdue: 0,
+        };
+    }
+
+    const dueDate = new Date(dueDateRaw);
+    const now = new Date();
+
+    const isOverdue = startOfDay(now).getTime() > startOfDay(dueDate).getTime();
+
+    return {
+        isOverdue,
+        daysOverdue: isOverdue ? Math.abs(diffInDays(dueDate, now)) : 0,
+    };
+}
+
 function formatTask(task: any) {
     const assignedToUser = task.assignedToUser ?? task.get?.("assignedToUser") ?? null;
     const assignedByUser = task.assignedByUser ?? task.get?.("assignedByUser") ?? null;
     const cancelledByUser = task.cancelledByUser ?? task.get?.("cancelledByUser") ?? null;
+    const overdueMeta = getOverdueMeta(task);
 
     return {
         publicId: task.getDataValue?.("public_id") ?? task.public_id,
@@ -56,6 +98,8 @@ function formatTask(task: any) {
         updatedAt: task.getDataValue?.("updated_at") ?? task.updated_at,
         cancelledAt: task.getDataValue?.("cancelled_at") ?? task.cancelled_at,
         cancelReason: task.getDataValue?.("cancel_reason") ?? task.cancel_reason,
+        isOverdue: overdueMeta.isOverdue,
+        daysOverdue: overdueMeta.daysOverdue,
         assignedTo: assignedToUser
             ? {
                 publicId: assignedToUser.id,
@@ -145,6 +189,19 @@ export async function createTask(req: Request, res: Response) {
             due_date: dueDate ? new Date(dueDate) : null,
         });
 
+        if (req.file) {
+            const uploadResult = await uploadBufferToCloudinary(
+                req.file.buffer,
+                `smartruga/tasks/${ranchId}`,
+                `task-${task.getDataValue("public_id")}`
+            );
+
+            await task.update({
+                image_url: uploadResult.secure_url,
+                image_public_id: uploadResult.public_id,
+            });
+        }
+
         const createdTask = await Task.findOne({
             where: { id: task.getDataValue("id") },
             include: [
@@ -212,11 +269,25 @@ export async function listTasks(req: Request, res: Response) {
             order: [["created_at", "DESC"]],
         });
 
+        const formattedTasks = tasks.map((task: any) => formatTask(task));
+
+        const summary = {
+            total: formattedTasks.length,
+            pending: formattedTasks.filter((task: any) => task.status === "pending").length,
+            inProgress: formattedTasks.filter((task: any) => task.status === "in_progress")
+                .length,
+            completed: formattedTasks.filter((task: any) => task.status === "completed").length,
+            overdue: formattedTasks.filter((task: any) => task.isOverdue).length,
+        };
+
         return res.status(StatusCodes.OK).json(
             successResponse({
                 message: "Tasks fetched successfully",
                 data: {
-                    tasks: tasks.map((task: any) => formatTask(task)),
+                    tasks: formattedTasks,
+                },
+                meta: {
+                    summary,
                 },
             })
         );
@@ -253,6 +324,24 @@ export async function updateTaskStatus(req: Request, res: Response) {
                 public_id: taskPublicId,
                 ranch_id: ranchId,
             },
+            include: [
+                {
+                    model: User,
+                    as: "assignedToUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+                {
+                    model: User,
+                    as: "assignedByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+                {
+                    model: User,
+                    as: "cancelledByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                    required: false,
+                },
+            ],
         });
 
         if (!task) {
@@ -295,7 +384,8 @@ export async function updateTaskStatus(req: Request, res: Response) {
             if (!allowedTransitions[currentStatus]?.includes(nextStatus)) {
                 return res.status(StatusCodes.BAD_REQUEST).json(
                     errorResponse({
-                        message: `Workers can only move task status from ${currentStatus} to ${allowedTransitions[currentStatus]?.join(", ") || "no further status"}`,
+                        message: `Workers can only move task status from ${currentStatus} to ${allowedTransitions[currentStatus]?.join(", ") || "no further status"
+                            }`,
                     })
                 );
             }
@@ -308,9 +398,11 @@ export async function updateTaskStatus(req: Request, res: Response) {
             successResponse({
                 message: "Task status updated successfully",
                 data: {
-                    task: {
-                        publicId: task.getDataValue("public_id"),
-                        status: task.getDataValue("status"),
+                    task: formatTask(task),
+                    history: {
+                        previousStatus: currentStatus,
+                        currentStatus: nextStatus,
+                        changedAt: new Date(),
                     },
                 },
             })
@@ -356,6 +448,24 @@ export async function cancelTask(req: Request, res: Response) {
                 public_id: taskPublicId,
                 ranch_id: ranchId,
             },
+            include: [
+                {
+                    model: User,
+                    as: "assignedToUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+                {
+                    model: User,
+                    as: "assignedByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+                {
+                    model: User,
+                    as: "cancelledByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                    required: false,
+                },
+            ],
         });
 
         if (!task) {
@@ -392,9 +502,8 @@ export async function cancelTask(req: Request, res: Response) {
             successResponse({
                 message: "Task cancelled successfully",
                 data: {
-                    task: {
-                        publicId: task.getDataValue("public_id"),
-                        status: task.getDataValue("status"),
+                    task: formatTask(task),
+                    history: {
                         cancelledAt: task.getDataValue("cancelled_at"),
                         cancelReason: task.getDataValue("cancel_reason"),
                     },

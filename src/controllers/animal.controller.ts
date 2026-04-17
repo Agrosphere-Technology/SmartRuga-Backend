@@ -87,17 +87,18 @@ export async function createAnimal(req: Request, res: Response) {
       );
     }
 
-    const {
-      speciesId,
-      tagNumber,
-      rfidTag,
-      sex,
-      dateOfBirth,
-      breed,
-      weight,
-      imageUrl,
-      imagePublicId,
-    } = req.body;
+    const speciesId = req.body.speciesId;
+    const tagNumber = req.body.tagNumber;
+    const rfidTag = req.body.rfidTag;
+    const sex = req.body.sex;
+    const dateOfBirth = req.body.dateOfBirth;
+    const breed = req.body.breed;
+    const weight =
+      req.body.weight !== undefined &&
+        req.body.weight !== null &&
+        String(req.body.weight).trim() !== ""
+        ? Number(req.body.weight)
+        : null;
 
     const species = await Species.findByPk(speciesId);
     if (!species) {
@@ -148,10 +149,23 @@ export async function createAnimal(req: Request, res: Response) {
       sex,
       date_of_birth: dateOfBirth ?? null,
       breed: breed ?? null,
-      weight: weight ?? null,
-      image_url: imageUrl ?? null,
-      image_public_id: imagePublicId ?? null,
+      weight,
+      image_url: null,
+      image_public_id: null,
     });
+
+    if (req.file) {
+      const uploadResult = await uploadBufferToCloudinary(
+        req.file.buffer,
+        `smartruga/animals/${ranchId}`,
+        `animal-${animal.get("public_id")}`
+      );
+
+      await animal.update({
+        image_url: uploadResult.secureUrl,
+        image_public_id: uploadResult.publicId,
+      });
+    }
 
     return res.status(StatusCodes.CREATED).json(
       successResponse({

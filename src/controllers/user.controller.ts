@@ -67,6 +67,15 @@ async function getUserMemberships(userId: string) {
   } as any);
 }
 
+function formatMemberships(memberships: any[]) {
+  return memberships.map((membership: any) => ({
+    ranchId: membership.get("ranch_id"),
+    ranchName: membership.ranch?.get("name") ?? null,
+    ranchSlug: membership.ranch?.get("slug") ?? null,
+    role: membership.get("role"),
+  }));
+}
+
 export async function getMyProfile(req: Request, res: Response) {
   try {
     const userId = req.user!.id;
@@ -88,12 +97,7 @@ export async function getMyProfile(req: Request, res: Response) {
         message: "Profile fetched successfully",
         data: {
           user: formatUserProfile(user),
-          memberships: memberships.map((membership: any) => ({
-            ranchId: membership.get("ranch_id"),
-            ranchName: membership.ranch?.get("name") ?? null,
-            ranchSlug: membership.ranch?.get("slug") ?? null,
-            role: membership.get("role"),
-          })),
+          memberships: formatMemberships(memberships),
           profileComplete: missingFields.length === 0,
           missingFields,
         },
@@ -112,7 +116,12 @@ export async function getMyProfile(req: Request, res: Response) {
 
 export async function updateMe(req: Request, res: Response) {
   try {
-    const parsed = updateMeSchema.safeParse(req.body);
+    const payload = {
+      ...req.body,
+    };
+
+    const parsed = updateMeSchema.safeParse(payload);
+
     if (!parsed.success) {
       return res.status(StatusCodes.BAD_REQUEST).json(
         errorResponse({
@@ -135,11 +144,29 @@ export async function updateMe(req: Request, res: Response) {
 
     const { first_name, last_name, phone } = parsed.data;
 
-    await user.update({
+    const updates: Record<string, any> = {
       ...(first_name !== undefined ? { first_name } : {}),
       ...(last_name !== undefined ? { last_name } : {}),
       ...(phone !== undefined ? { phone } : {}),
-    });
+    };
+
+    if (req.file) {
+      const existingImagePublicId = user.get("image_public_id");
+      if (existingImagePublicId) {
+        await cloudinary.uploader.destroy(String(existingImagePublicId));
+      }
+
+      const uploadResult = await uploadBufferToCloudinary(
+        req.file.buffer,
+        "smartruga/users",
+        `user-${userId}`
+      );
+
+      updates.image_url = uploadResult.secure_url;
+      updates.image_public_id = uploadResult.public_id;
+    }
+
+    await user.update(updates);
 
     const memberships = await getUserMemberships(userId);
     const missingFields = profileMissingFields(user);
@@ -149,12 +176,7 @@ export async function updateMe(req: Request, res: Response) {
         message: "Profile updated successfully",
         data: {
           user: formatUserProfile(user),
-          memberships: memberships.map((membership: any) => ({
-            ranchId: membership.get("ranch_id"),
-            ranchName: membership.ranch?.get("name") ?? null,
-            ranchSlug: membership.ranch?.get("slug") ?? null,
-            role: membership.get("role"),
-          })),
+          memberships: formatMemberships(memberships),
           profileComplete: missingFields.length === 0,
           missingFields,
         },
@@ -216,12 +238,7 @@ export async function uploadMyProfileImage(req: Request, res: Response) {
         message: "Profile image uploaded successfully",
         data: {
           user: formatUserProfile(user),
-          memberships: memberships.map((membership: any) => ({
-            ranchId: membership.get("ranch_id"),
-            ranchName: membership.ranch?.get("name") ?? null,
-            ranchSlug: membership.ranch?.get("slug") ?? null,
-            role: membership.get("role"),
-          })),
+          memberships: formatMemberships(memberships),
           profileComplete: missingFields.length === 0,
           missingFields,
         },
@@ -238,7 +255,8 @@ export async function uploadMyProfileImage(req: Request, res: Response) {
   }
 }
 
-export async function removeMyProfileImage(req: Request, res: Response) {  try {
+export async function removeMyProfileImage(req: Request, res: Response) {
+  try {
     const userId = req.user!.id;
 
     const user = await User.findByPk(userId);
@@ -274,12 +292,7 @@ export async function removeMyProfileImage(req: Request, res: Response) {  try {
         message: "Profile image removed successfully",
         data: {
           user: formatUserProfile(user),
-          memberships: memberships.map((membership: any) => ({
-            ranchId: membership.get("ranch_id"),
-            ranchName: membership.ranch?.get("name") ?? null,
-            ranchSlug: membership.ranch?.get("slug") ?? null,
-            role: membership.get("role"),
-          })),
+          memberships: formatMemberships(memberships),
           profileComplete: missingFields.length === 0,
           missingFields,
         },

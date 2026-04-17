@@ -19,7 +19,7 @@ const router = Router();
  * /api/v1/ranches/{slug}/tasks:
  *   post:
  *     summary: Create a task
- *     description: Allows a ranch owner or manager to create and assign a task to a ranch member.
+ *     description: Allows a ranch owner or manager to create and assign a task to a ranch member. Supports one-step image upload using multipart/form-data.
  *     tags: [Tasks]
  *     security:
  *       - bearerAuth: []
@@ -33,7 +33,7 @@ const router = Router();
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             required:
@@ -56,6 +56,9 @@ const router = Router();
  *                 format: date-time
  *                 nullable: true
  *                 example: 2026-03-30T00:00:00.000Z
+ *               image:
+ *                 type: string
+ *                 format: binary
  *     responses:
  *       201:
  *         description: Task created successfully
@@ -72,6 +75,7 @@ router.post(
     "/:slug/tasks",
     requireAuth(),
     requireRanchAccess("slug"),
+    upload.single("image"),
     createTask
 );
 

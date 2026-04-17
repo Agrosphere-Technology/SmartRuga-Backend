@@ -25,7 +25,7 @@ const router = Router();
  * /api/v1/ranches/{slug}/inventory-items:
  *   post:
  *     summary: Create an inventory item
- *     description: Allows a ranch owner, manager, or storekeeper to create a new inventory item.
+ *     description: Allows a ranch owner, manager, or storekeeper to create a new inventory item, with optional image upload.
  *     tags: [Inventory]
  *     security:
  *       - bearerAuth: []
@@ -39,7 +39,7 @@ const router = Router();
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             required:
@@ -72,6 +72,9 @@ const router = Router();
  *               reorderLevel:
  *                 type: number
  *                 example: 30
+ *               image:
+ *                 type: string
+ *                 format: binary
  *     responses:
  *       201:
  *         description: Inventory item created successfully
@@ -139,6 +142,7 @@ router.post(
     "/:slug/inventory-items",
     requireAuth(),
     requireRanchAccess("slug"),
+    upload.single("image"),
     createInventoryItem
 );
 
@@ -168,14 +172,6 @@ router.get(
  *     responses:
  *       200:
  *         description: Inventory summary returned successfully
- *         content:
- *           application/json:
- *             example:
- *               summary:
- *                 totalItems: 12
- *                 activeItems: 10
- *                 inactiveItems: 2
- *                 lowStockItems: 3
  *       401:
  *         description: Unauthorized
  */
@@ -234,22 +230,6 @@ router.get(
  *     responses:
  *       200:
  *         description: Inventory dashboard analytics returned successfully
- *         content:
- *           application/json:
- *             example:
- *               dashboard:
- *                 totalItems: 12
- *                 activeItems: 10
- *                 inactiveItems: 2
- *                 lowStockItems: 3
- *                 totalQuantityOnHand: 540
- *                 categories:
- *                   - category: vaccine
- *                     count: 4
- *                     totalQuantityOnHand: 180
- *                   - category: medicine
- *                     count: 3
- *                     totalQuantityOnHand: 90
  *       401:
  *         description: Unauthorized
  */
@@ -390,6 +370,7 @@ router.patch(
     "/:slug/inventory-items/:itemPublicId",
     requireAuth(),
     requireRanchAccess("slug"),
+    upload.single("image"),
     updateInventoryItem
 );
 

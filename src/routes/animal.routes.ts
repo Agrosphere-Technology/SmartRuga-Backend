@@ -35,6 +35,12 @@
  *         status:
  *           type: string
  *           enum: [active, sold, deceased]
+ *         imageUrl:
+ *           type: string
+ *           nullable: true
+ *         imagePublicId:
+ *           type: string
+ *           nullable: true
  *         species:
  *           type: object
  *           nullable: true
@@ -108,9 +114,38 @@
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
- *             $ref: '#/components/schemas/CreateAnimalRequest'
+ *             type: object
+ *             required:
+ *               - speciesId
+ *               - sex
+ *             properties:
+ *               speciesId:
+ *                 type: string
+ *                 format: uuid
+ *               tagNumber:
+ *                 type: string
+ *                 nullable: true
+ *               rfidTag:
+ *                 type: string
+ *                 nullable: true
+ *               sex:
+ *                 type: string
+ *                 enum: [male, female, unknown]
+ *               dateOfBirth:
+ *                 type: string
+ *                 format: date
+ *                 nullable: true
+ *               breed:
+ *                 type: string
+ *                 nullable: true
+ *               weight:
+ *                 type: number
+ *                 nullable: true
+ *               image:
+ *                 type: string
+ *                 format: binary
  *     responses:
  *       201:
  *         description: Animal created
@@ -486,8 +521,6 @@
  *         description: Animal not found
  */
 
-// Import necessary modules and middlewares
-
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { requireRanchAccess } from "../middlewares/ranchAccess";
@@ -510,6 +543,7 @@ router.post(
   "/:slug/animals",
   requireAuth(),
   requireRanchAccess("slug"),
+  upload.single("image"),
   createAnimal
 );
 
@@ -545,6 +579,7 @@ router.patch(
   "/:slug/animals/:id",
   requireAuth(),
   requireRanchAccess("slug"),
+  upload.single("image"),
   updateAnimal
 );
 

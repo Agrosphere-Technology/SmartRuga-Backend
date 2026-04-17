@@ -68,11 +68,8 @@ function formatInventoryItem(item: any) {
         unit: pickValue(item, ["unit"]),
         sku: pickValue(item, ["sku"]),
         description: pickValue(item, ["description"]),
-
-        // ✅ ADD THESE
         imageUrl: pickValue(item, ["image_url", "imageUrl"]),
         imagePublicId: pickValue(item, ["image_public_id", "imagePublicId"]),
-
         quantityOnHand,
         reorderLevel,
         isLowStock: quantityOnHand <= reorderLevel,
@@ -129,7 +126,19 @@ export async function createInventoryItem(req: Request, res: Response) {
             );
         }
 
-        const parsed = createInventoryItemSchema.safeParse(req.body);
+        const payload = {
+            ...req.body,
+            quantityOnHand:
+                req.body?.quantityOnHand !== undefined
+                    ? Number(req.body.quantityOnHand)
+                    : req.body?.quantityOnHand,
+            reorderLevel:
+                req.body?.reorderLevel !== undefined
+                    ? Number(req.body.reorderLevel)
+                    : req.body?.reorderLevel,
+        };
+
+        const parsed = createInventoryItemSchema.safeParse(payload);
 
         if (!parsed.success) {
             return res.status(StatusCodes.BAD_REQUEST).json(
@@ -149,12 +158,30 @@ export async function createInventoryItem(req: Request, res: Response) {
             unit: validated.unit,
             sku: validated.sku ?? null,
             description: validated.description ?? null,
+            image_url: null,
+            image_public_id: null,
             quantity_on_hand: validated.quantityOnHand,
             reorder_level: validated.reorderLevel,
             is_active: true,
             created_by_user_id: userId,
             updated_by_user_id: userId,
         });
+
+        if (req.file) {
+            const itemPublicIdResolved = String(createdItem.getDataValue("public_id"));
+
+            const uploadResult = await uploadBufferToCloudinary(
+                req.file.buffer,
+                `smartruga/inventory/${ranchId}`,
+                `inventory-item-${itemPublicIdResolved}`
+            );
+
+            await createdItem.update({
+                image_url: uploadResult.secure_url,
+                image_public_id: uploadResult.public_id,
+                updated_by_user_id: userId,
+            });
+        }
 
         const item = await InventoryItem.findOne({
             where: {

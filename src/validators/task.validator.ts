@@ -1,4 +1,3 @@
-
 import { z } from "zod";
 
 export const dueDateSchema = z
@@ -27,5 +26,5 @@ export const updateTaskStatusSchema = z.object({
 });
 
 export const cancelTaskSchema = z.object({
-    reason: z.string().trim().min(1).max(1000)
+    reason: z.string().trim().min(1).max(1000).optional().nullable(),
 });

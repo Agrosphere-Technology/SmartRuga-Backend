@@ -98,11 +98,21 @@ router.get("/me", requireAuth(), getMyProfile);
  *     security:
  *       - bearerAuth: []
  *     requestBody:
- *       required: true
+ *       required: false
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
- *             $ref: '#/components/schemas/UpdateMeRequest'
+ *             type: object
+ *             properties:
+ *               first_name:
+ *                 type: string
+ *               last_name:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               image:
+ *                 type: string
+ *                 format: binary
  *     responses:
  *       200:
  *         description: Updated profile payload
@@ -111,7 +121,12 @@ router.get("/me", requireAuth(), getMyProfile);
  *       401:
  *         description: Unauthorized
  */
-router.patch("/me", requireAuth(), updateMe);
+router.patch(
+    "/me",
+    requireAuth(),
+    upload.single("image"),
+    updateMe
+);
 
 /**
  * @openapi

@@ -8,6 +8,9 @@ export type AlertType =
     | "status_deceased"
     | "low_stock"
     | "vaccination_overdue"
+    | "task_created"
+    | "task_status_changed"
+    | "task_cancelled"
     | "task_submission_pending_review"
     | "task_submission_rejected";
 

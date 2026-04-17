@@ -38,6 +38,16 @@ export function TaskSubmissionFactory(sequelize: Sequelize) {
                 allowNull: true,
             },
 
+            image_url: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+            },
+
+            image_public_id: {
+                type: DataTypes.STRING(255),
+                allowNull: true,
+            },
+
             notes: {
                 type: DataTypes.TEXT,
                 allowNull: true,
