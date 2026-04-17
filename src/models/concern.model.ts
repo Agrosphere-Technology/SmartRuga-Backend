@@ -1,8 +1,8 @@
 import { DataTypes, Sequelize } from "sequelize";
 
-export function RanchAlertFactory(sequelize: Sequelize) {
+export function ConcernFactory(sequelize: Sequelize) {
     return sequelize.define(
-        "RanchAlert",
+        "Concern",
         {
             id: {
                 type: DataTypes.UUID,
@@ -23,44 +23,50 @@ export function RanchAlertFactory(sequelize: Sequelize) {
                 allowNull: false,
             },
 
-            animal_id: {
+            raised_by_user_id: {
+                type: DataTypes.UUID,
+                allowNull: false,
+            },
+
+            assigned_to_user_id: {
                 type: DataTypes.UUID,
                 allowNull: true,
             },
 
-            alert_type: {
+            category: {
                 type: DataTypes.ENUM(
-                    "health_sick",
-                    "health_quarantined",
-                    "status_sold",
-                    "status_deceased",
-                    "low_stock",
-                    "vaccination_overdue",
-                    "task_created",
-                    "task_status_changed",
-                    "task_cancelled",
-                    "task_submission_pending_review",
-                    "task_submission_rejected",
-                    "concern_raised",
-                    "concern_resolved"
+                    "health",
+                    "inventory",
+                    "animal",
+                    "facility",
+                    "security",
+                    "task",
+                    "other"
                 ),
                 allowNull: false,
+                defaultValue: "other",
             },
 
             title: {
-                type: DataTypes.STRING(255),
+                type: DataTypes.STRING(150),
                 allowNull: false,
             },
 
-            message: {
+            description: {
                 type: DataTypes.TEXT,
                 allowNull: false,
             },
 
             priority: {
-                type: DataTypes.ENUM("low", "medium", "high"),
+                type: DataTypes.ENUM("low", "medium", "high", "urgent"),
                 allowNull: false,
                 defaultValue: "medium",
+            },
+
+            status: {
+                type: DataTypes.ENUM("open", "in_review", "resolved", "dismissed"),
+                allowNull: false,
+                defaultValue: "open",
             },
 
             entity_type: {
@@ -73,32 +79,35 @@ export function RanchAlertFactory(sequelize: Sequelize) {
                 allowNull: true,
             },
 
-            is_read: {
-                type: DataTypes.BOOLEAN,
-                allowNull: false,
-                defaultValue: false,
+            image_url: {
+                type: DataTypes.TEXT,
+                allowNull: true,
             },
 
-            read_by: {
+            image_public_id: {
+                type: DataTypes.STRING(255),
+                allowNull: true,
+            },
+
+            resolution_notes: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+            },
+
+            resolved_by_user_id: {
                 type: DataTypes.UUID,
                 allowNull: true,
             },
 
-            read_at: {
+            resolved_at: {
                 type: DataTypes.DATE,
                 allowNull: true,
             },
-
-            created_at: {
-                type: DataTypes.DATE,
-                allowNull: false,
-                defaultValue: DataTypes.NOW,
-            },
         },
         {
-            tableName: "ranch_alerts",
+            tableName: "concerns",
             underscored: true,
-            timestamps: false,
+            timestamps: true,
         }
     );
 }

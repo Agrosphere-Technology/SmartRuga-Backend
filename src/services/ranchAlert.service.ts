@@ -12,7 +12,9 @@ export type AlertType =
     | "task_status_changed"
     | "task_cancelled"
     | "task_submission_pending_review"
-    | "task_submission_rejected";
+    | "task_submission_rejected"
+    | "concern_raised"
+    | "concern_resolved";
 
 export type AlertPriority = "low" | "medium" | "high";
 

@@ -17,6 +17,7 @@ import { TaskFactory } from "./task.model";
 import { TaskSubmissionFactory } from "./task-submission.model";
 import { InventoryItemFactory } from "./inventory-item.model";
 import { InventoryStockMovementFactory } from "./inventory-stock-movement.model";
+import { ConcernFactory } from "./concern.model";
 
 export const sequelize = new Sequelize(process.env.DATABASE_URL!, {
   dialect: "postgres",
@@ -49,6 +50,7 @@ export const Task = TaskFactory(sequelize);
 export const TaskSubmission = TaskSubmissionFactory(sequelize);
 export const InventoryItem = InventoryItemFactory(sequelize);
 export const InventoryStockMovement = InventoryStockMovementFactory(sequelize);
+export const Concern = ConcernFactory(sequelize);
 
 Task.belongsTo(User, { foreignKey: "assigned_by_user_id", as: "assigner" });
 
@@ -308,4 +310,37 @@ InventoryStockMovement.belongsTo(User, {
 InventoryStockMovement.belongsTo(Ranch, {
   foreignKey: "ranch_id",
   as: "ranch",
+});
+
+/////// Concern <=> Association  /////////
+
+// Concern associations
+Concern.belongsTo(User, {
+  foreignKey: "raised_by_user_id",
+  as: "raisedByUser",
+});
+
+Concern.belongsTo(User, {
+  foreignKey: "assigned_to_user_id",
+  as: "assignedToUser",
+});
+
+Concern.belongsTo(User, {
+  foreignKey: "resolved_by_user_id",
+  as: "resolvedByUser",
+});
+
+User.hasMany(Concern, {
+  foreignKey: "raised_by_user_id",
+  as: "raisedConcerns",
+});
+
+User.hasMany(Concern, {
+  foreignKey: "assigned_to_user_id",
+  as: "assignedConcerns",
+});
+
+User.hasMany(Concern, {
+  foreignKey: "resolved_by_user_id",
+  as: "resolvedConcerns",
 });
