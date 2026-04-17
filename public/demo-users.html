@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SmartRUGA Demo Users</title>
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            color: #38bdf8;
+            margin-bottom: 10px;
+        }
+
+        h2 {
+            margin-top: 40px;
+            color: #22c55e;
+        }
+
+        h3 {
+            margin-top: 25px;
+            color: #facc15;
+        }
+
+        .card {
+            background: #1e293b;
+            border-radius: 10px;
+            padding: 15px 20px;
+            margin-top: 10px;
+        }
+
+        .email {
+            font-family: monospace;
+            color: #93c5fd;
+        }
+
+        .highlight {
+            background: #334155;
+            padding: 10px;
+            border-radius: 6px;
+            font-family: monospace;
+            margin-top: 10px;
+            display: inline-block;
+        }
+
+        ul {
+            margin: 8px 0;
+            padding-left: 18px;
+        }
+
+        .section {
+            margin-top: 30px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: #475569;
+            font-size: 12px;
+            margin-left: 6px;
+        }
+
+        .footer {
+            margin-top: 50px;
+            font-size: 14px;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+
+        <h1>🌱 SmartRUGA Demo Users</h1>
+        <p>Use these credentials to test the system after seeding data.</p>
+
+        <div class="section">
+            <h2>🔐 Default Password</h2>
+            <div class="highlight">Password123!</div>
+        </div>
+
+        <div class="section">
+            <h2>🌍 Base API</h2>
+            <div class="highlight">http://localhost:5000/api/v1</div>
+        </div>
+
+        <div class="section">
+            <h2>🐺 Ranch</h2>
+            <div class="highlight">test-wolf-ranch</div>
+        </div>
+
+        <div class="section">
+            <h2>👥 Users</h2>
+
+            <h3>👑 Owner</h3>
+            <div class="card">
+                <div class="email">owner.1@smartruga-demo.local</div>
+                <span class="badge">owner</span>
+            </div>
+
+            <h3>🧑‍💼 Managers</h3>
+            <div class="card">
+                <div class="email">manager.1@smartruga-demo.local</div>
+                <div class="email">manager.2@smartruga-demo.local</div>
+                <span class="badge">manager</span>
+            </div>
+
+            <h3>👷 Workers</h3>
+            <div class="card">
+                <div class="email">worker.1@smartruga-demo.local</div>
+                <div class="email">worker.2@smartruga-demo.local</div>
+                <div class="email">worker.3@smartruga-demo.local</div>
+                <div class="email">worker.4@smartruga-demo.local</div>
+                <div class="email">worker.5@smartruga-demo.local</div>
+                <span class="badge">worker</span>
+            </div>
+
+            <h3>🩺 Vets</h3>
+            <div class="card">
+                <div class="email">vet.1@smartruga-demo.local</div>
+                <div class="email">vet.2@smartruga-demo.local</div>
+                <span class="badge">vet</span>
+            </div>
+
+            <h3>📦 Storekeepers</h3>
+            <div class="card">
+                <div class="email">storekeeper.1@smartruga-demo.local</div>
+                <div class="email">storekeeper.2@smartruga-demo.local</div>
+                <span class="badge">storekeeper</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🧪 What to Test</h2>
+
+            <h3>Owner / Manager</h3>
+            <ul>
+                <li>Dashboard overview</li>
+                <li>Assign tasks</li>
+                <li>Review submissions</li>
+                <li>Manage concerns</li>
+                <li>Inventory & alerts</li>
+            </ul>
+
+            <h3>Worker</h3>
+            <ul>
+                <li>View assigned tasks</li>
+                <li>Submit proof</li>
+                <li>Raise concerns</li>
+            </ul>
+
+            <h3>Vet</h3>
+            <ul>
+                <li>Health events</li>
+                <li>Vaccinations</li>
+                <li>Raise concerns</li>
+            </ul>
+
+            <h3>Storekeeper</h3>
+            <ul>
+                <li>Inventory</li>
+                <li>Stock movements</li>
+                <li>Raise concerns</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>🚀 Reseed Data</h2>
+            <div class="highlight">npm run db:seed-dev</div>
+        </div>
+
+        <div class="footer">
+            SmartRUGA Backend • Demo Environment
+        </div>
+
+    </div>
+</body>
+
+</html>
