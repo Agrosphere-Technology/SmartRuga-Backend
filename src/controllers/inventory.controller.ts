@@ -68,8 +68,11 @@ function formatInventoryItem(item: any) {
         unit: pickValue(item, ["unit"]),
         sku: pickValue(item, ["sku"]),
         description: pickValue(item, ["description"]),
+
+        // ✅ ADD THESE
         imageUrl: pickValue(item, ["image_url", "imageUrl"]),
         imagePublicId: pickValue(item, ["image_public_id", "imagePublicId"]),
+
         quantityOnHand,
         reorderLevel,
         isLowStock: quantityOnHand <= reorderLevel,

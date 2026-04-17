@@ -16,6 +16,8 @@ export class UserModel extends Model<
   declare email: string;
   declare password_hash: string;
   declare phone: string | null;
+  declare image_url: string | null;
+  declare image_public_id: string | null;
   declare platform_role: "user" | "admin" | "super_admin";
   declare is_active: boolean;
   declare deleted_at: Date | null;
@@ -36,6 +38,17 @@ export function UserFactory(sequelize: Sequelize) {
       email: { type: DataTypes.STRING(255), allowNull: false, unique: true },
       password_hash: { type: DataTypes.STRING(255), allowNull: false },
       phone: { type: DataTypes.STRING(30), allowNull: true },
+
+      image_url: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+
+      image_public_id: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+
       platform_role: {
         type: DataTypes.ENUM("user", "admin", "super_admin"),
         allowNull: false,

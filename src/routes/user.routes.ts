@@ -1,6 +1,12 @@
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
-import { getMyProfile, updateMe } from "../controllers/user.controller";
+import { upload } from "../middlewares/upload";
+import {
+    getMyProfile,
+    removeMyProfileImage,
+    updateMe,
+    uploadMyProfileImage,
+} from "../controllers/user.controller";
 
 const router = Router();
 
@@ -32,16 +38,22 @@ const router = Router();
  *             email:
  *               type: string
  *               format: email
- *             platformRole:
+ *             platform_role:
  *               type: string
  *               enum: [user, admin, super_admin]
- *             firstName:
+ *             first_name:
  *               type: string
  *               nullable: true
- *             lastName:
+ *             last_name:
  *               type: string
  *               nullable: true
  *             phone:
+ *               type: string
+ *               nullable: true
+ *             imageUrl:
+ *               type: string
+ *               nullable: true
+ *             imagePublicId:
  *               type: string
  *               nullable: true
  *         profileComplete:
@@ -53,9 +65,9 @@ const router = Router();
  *     UpdateMeRequest:
  *       type: object
  *       properties:
- *         firstName:
+ *         first_name:
  *           type: string
- *         lastName:
+ *         last_name:
  *           type: string
  *         phone:
  *           type: string
@@ -72,14 +84,10 @@ const router = Router();
  *     responses:
  *       200:
  *         description: Profile payload
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/MeResponse'
  *       401:
  *         description: Unauthorized
  */
-
+router.get("/me", requireAuth(), getMyProfile);
 
 /**
  * @openapi
@@ -98,18 +106,64 @@ const router = Router();
  *     responses:
  *       200:
  *         description: Updated profile payload
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/MeResponse'
  *       400:
  *         description: Invalid payload
  *       401:
  *         description: Unauthorized
  */
-
-router.get("/me", requireAuth(), getMyProfile);
-
 router.patch("/me", requireAuth(), updateMe);
+
+/**
+ * @openapi
+ * /api/v1/me/image:
+ *   post:
+ *     summary: Upload or replace my profile image
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - image
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Profile image uploaded successfully
+ *       400:
+ *         description: Image file is required
+ *       401:
+ *         description: Unauthorized
+ */
+router.post(
+    "/me/image",
+    requireAuth(),
+    upload.single("image"),
+    uploadMyProfileImage
+);
+
+/**
+ * @openapi
+ * /api/v1/me/image:
+ *   delete:
+ *     summary: Remove my profile image
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile image removed successfully
+ *       400:
+ *         description: Profile has no image
+ *       401:
+ *         description: Unauthorized
+ */
+router.delete("/me/image", requireAuth(), removeMyProfileImage);
 
 export default router;
