@@ -1,12 +1,83 @@
+import { v2 as cloudinary } from "cloudinary";
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
-import { createTaskSchema, updateTaskStatusSchema } from "../validators/task.validator";
+import { cancelTaskSchema, createTaskSchema, updateTaskStatusSchema } from "../validators/task.validator";
 import { RanchMember, Task, User } from "../models";
-import { cancelTaskSchema } from "../validators/task.validator";
 import { errorResponse, successResponse } from "../utils/apiResponse";
 
 function buildUserName(user: any) {
     return [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+}
+
+function uploadBufferToCloudinary(
+    fileBuffer: Buffer,
+    folder: string,
+    publicId: string
+): Promise<{ secure_url: string; public_id: string }> {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder,
+                public_id: publicId,
+                resource_type: "image",
+                overwrite: true,
+            },
+            (error, result) => {
+                if (error || !result) {
+                    reject(error ?? new Error("Image upload failed"));
+                    return;
+                }
+
+                resolve({
+                    secure_url: result.secure_url,
+                    public_id: result.public_id,
+                });
+            }
+        );
+
+        stream.end(fileBuffer);
+    });
+}
+
+function formatTask(task: any) {
+    const assignedToUser = task.assignedToUser ?? task.get?.("assignedToUser") ?? null;
+    const assignedByUser = task.assignedByUser ?? task.get?.("assignedByUser") ?? null;
+    const cancelledByUser = task.cancelledByUser ?? task.get?.("cancelledByUser") ?? null;
+
+    return {
+        publicId: task.getDataValue?.("public_id") ?? task.public_id,
+        title: task.getDataValue?.("title") ?? task.title,
+        description: task.getDataValue?.("description") ?? task.description,
+        imageUrl: task.getDataValue?.("image_url") ?? task.image_url ?? null,
+        imagePublicId: task.getDataValue?.("image_public_id") ?? task.image_public_id ?? null,
+        status: task.getDataValue?.("status") ?? task.status,
+        dueDate: task.getDataValue?.("due_date") ?? task.due_date,
+        createdAt: task.getDataValue?.("created_at") ?? task.created_at,
+        updatedAt: task.getDataValue?.("updated_at") ?? task.updated_at,
+        cancelledAt: task.getDataValue?.("cancelled_at") ?? task.cancelled_at,
+        cancelReason: task.getDataValue?.("cancel_reason") ?? task.cancel_reason,
+        assignedTo: assignedToUser
+            ? {
+                publicId: assignedToUser.id,
+                name: buildUserName(assignedToUser),
+                email: assignedToUser.email,
+            }
+            : null,
+        assignedBy: assignedByUser
+            ? {
+                publicId: assignedByUser.id,
+                name: buildUserName(assignedByUser),
+                email: assignedByUser.email,
+            }
+            : null,
+        cancelledBy: cancelledByUser
+            ? {
+                publicId: cancelledByUser.id,
+                name: buildUserName(cancelledByUser),
+                email: cancelledByUser.email,
+            }
+            : null,
+    };
 }
 
 export async function createTask(req: Request, res: Response) {
@@ -67,27 +138,34 @@ export async function createTask(req: Request, res: Response) {
             ranch_id: ranchId,
             title,
             description: description ?? null,
+            image_url: null,
+            image_public_id: null,
             assigned_to_user_id: assignee.getDataValue("id"),
             assigned_by_user_id: actorUserId,
             due_date: dueDate ? new Date(dueDate) : null,
+        });
+
+        const createdTask = await Task.findOne({
+            where: { id: task.getDataValue("id") },
+            include: [
+                {
+                    model: User,
+                    as: "assignedToUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+                {
+                    model: User,
+                    as: "assignedByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+            ],
         });
 
         return res.status(StatusCodes.CREATED).json(
             successResponse({
                 message: "Task created successfully",
                 data: {
-                    task: {
-                        publicId: task.getDataValue("public_id"),
-                        title: task.getDataValue("title"),
-                        description: task.getDataValue("description"),
-                        status: task.getDataValue("status"),
-                        dueDate: task.getDataValue("due_date"),
-                        assignedTo: {
-                            publicId: assignee.getDataValue("id"),
-                            name: buildUserName(assignee),
-                            email: assignee.getDataValue("email"),
-                        },
-                    },
+                    task: formatTask(createdTask),
                 },
             })
         );
@@ -138,28 +216,7 @@ export async function listTasks(req: Request, res: Response) {
             successResponse({
                 message: "Tasks fetched successfully",
                 data: {
-                    tasks: tasks.map((task: any) => ({
-                        publicId: task.public_id,
-                        title: task.title,
-                        description: task.description,
-                        status: task.status,
-                        dueDate: task.due_date,
-                        createdAt: task.created_at,
-                        assignedTo: task.assignedToUser
-                            ? {
-                                publicId: task.assignedToUser.id,
-                                name: buildUserName(task.assignedToUser),
-                                email: task.assignedToUser.email,
-                            }
-                            : null,
-                        assignedBy: task.assignedByUser
-                            ? {
-                                publicId: task.assignedByUser.id,
-                                name: buildUserName(task.assignedByUser),
-                                email: task.assignedByUser.email,
-                            }
-                            : null,
-                    })),
+                    tasks: tasks.map((task: any) => formatTask(task)),
                 },
             })
         );
@@ -407,44 +464,11 @@ export async function getTaskByPublicId(req: Request, res: Response) {
             );
         }
 
-        const taskData = task as any;
-
         return res.status(StatusCodes.OK).json(
             successResponse({
                 message: "Task fetched successfully",
                 data: {
-                    task: {
-                        publicId: task.getDataValue("public_id"),
-                        title: task.getDataValue("title"),
-                        description: task.getDataValue("description"),
-                        status: task.getDataValue("status"),
-                        dueDate: task.getDataValue("due_date"),
-                        createdAt: task.getDataValue("created_at"),
-                        updatedAt: task.getDataValue("updated_at"),
-                        cancelledAt: task.getDataValue("cancelled_at"),
-                        cancelReason: task.getDataValue("cancel_reason"),
-                        assignedTo: taskData.assignedToUser
-                            ? {
-                                publicId: taskData.assignedToUser.id,
-                                name: buildUserName(taskData.assignedToUser),
-                                email: taskData.assignedToUser.email,
-                            }
-                            : null,
-                        assignedBy: taskData.assignedByUser
-                            ? {
-                                publicId: taskData.assignedByUser.id,
-                                name: buildUserName(taskData.assignedByUser),
-                                email: taskData.assignedByUser.email,
-                            }
-                            : null,
-                        cancelledBy: taskData.cancelledByUser
-                            ? {
-                                publicId: taskData.cancelledByUser.id,
-                                name: buildUserName(taskData.cancelledByUser),
-                                email: taskData.cancelledByUser.email,
-                            }
-                            : null,
-                    },
+                    task: formatTask(task),
                 },
             })
         );
@@ -453,6 +477,178 @@ export async function getTaskByPublicId(req: Request, res: Response) {
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
             errorResponse({
                 message: "Failed to fetch task",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
+    }
+}
+
+export async function uploadTaskImage(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+        const ranchRole = req.membership!.ranchRole;
+        const { taskPublicId } = req.params;
+
+        if (!["owner", "manager"].includes(ranchRole)) {
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only ranch owners or managers can upload task images",
+                })
+            );
+        }
+
+        if (!req.file) {
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Image file is required",
+                })
+            );
+        }
+
+        const task = await Task.findOne({
+            where: {
+                public_id: taskPublicId,
+                ranch_id: ranchId,
+            },
+            include: [
+                {
+                    model: User,
+                    as: "assignedToUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+                {
+                    model: User,
+                    as: "assignedByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+                {
+                    model: User,
+                    as: "cancelledByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                    required: false,
+                },
+            ],
+        });
+
+        if (!task) {
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Task not found",
+                })
+            );
+        }
+
+        const oldImagePublicId = task.getDataValue("image_public_id");
+        if (oldImagePublicId) {
+            await cloudinary.uploader.destroy(String(oldImagePublicId));
+        }
+
+        const uploadResult = await uploadBufferToCloudinary(
+            req.file.buffer,
+            `smartruga/tasks/${ranchId}`,
+            `task-${task.getDataValue("public_id")}`
+        );
+
+        await task.update({
+            image_url: uploadResult.secure_url,
+            image_public_id: uploadResult.public_id,
+        });
+
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Task image uploaded successfully",
+                data: {
+                    task: formatTask(task),
+                },
+            })
+        );
+    } catch (err: any) {
+        console.error("UPLOAD_TASK_IMAGE_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to upload task image",
+                errors: err?.message ?? "Unknown error",
+            })
+        );
+    }
+}
+
+export async function removeTaskImage(req: Request, res: Response) {
+    try {
+        const ranchId = req.ranch!.id;
+        const ranchRole = req.membership!.ranchRole;
+        const { taskPublicId } = req.params;
+
+        if (!["owner", "manager"].includes(ranchRole)) {
+            return res.status(StatusCodes.FORBIDDEN).json(
+                errorResponse({
+                    message: "Only ranch owners or managers can remove task images",
+                })
+            );
+        }
+
+        const task = await Task.findOne({
+            where: {
+                public_id: taskPublicId,
+                ranch_id: ranchId,
+            },
+            include: [
+                {
+                    model: User,
+                    as: "assignedToUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+                {
+                    model: User,
+                    as: "assignedByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                },
+                {
+                    model: User,
+                    as: "cancelledByUser",
+                    attributes: ["id", "first_name", "last_name", "email"],
+                    required: false,
+                },
+            ],
+        });
+
+        if (!task) {
+            return res.status(StatusCodes.NOT_FOUND).json(
+                errorResponse({
+                    message: "Task not found",
+                })
+            );
+        }
+
+        const imagePublicId = task.getDataValue("image_public_id");
+        if (!imagePublicId) {
+            return res.status(StatusCodes.BAD_REQUEST).json(
+                errorResponse({
+                    message: "Task has no image",
+                })
+            );
+        }
+
+        await cloudinary.uploader.destroy(String(imagePublicId));
+
+        await task.update({
+            image_url: null,
+            image_public_id: null,
+        });
+
+        return res.status(StatusCodes.OK).json(
+            successResponse({
+                message: "Task image removed successfully",
+                data: {
+                    task: formatTask(task),
+                },
+            })
+        );
+    } catch (err: any) {
+        console.error("REMOVE_TASK_IMAGE_ERROR:", err);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+            errorResponse({
+                message: "Failed to remove task image",
                 errors: err?.message ?? "Unknown error",
             })
         );

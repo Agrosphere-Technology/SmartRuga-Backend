@@ -1,7 +1,16 @@
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { requireRanchAccess } from "../middlewares/ranchAccess";
-import { cancelTask, createTask, getTaskByPublicId, listTasks, updateTaskStatus } from "../controllers/task.controller";
+import { upload } from "../middlewares/upload";
+import {
+    cancelTask,
+    createTask,
+    getTaskByPublicId,
+    listTasks,
+    removeTaskImage,
+    updateTaskStatus,
+    uploadTaskImage,
+} from "../controllers/task.controller";
 
 const router = Router();
 
@@ -152,7 +161,6 @@ router.patch(
     updateTaskStatus
 );
 
-
 /**
  * @openapi
  * /api/v1/ranches/{slug}/tasks/{taskPublicId}/cancel:
@@ -199,8 +207,6 @@ router.patch(
  *       404:
  *         description: Task not found
  */
-
-
 router.patch(
     "/:slug/tasks/:taskPublicId/cancel",
     requireAuth(),
@@ -239,12 +245,104 @@ router.patch(
  *       404:
  *         description: Task not found
  */
-
 router.get(
     "/:slug/tasks/:taskPublicId",
     requireAuth(),
     requireRanchAccess("slug"),
     getTaskByPublicId
+);
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/tasks/{taskPublicId}/image:
+ *   post:
+ *     summary: Upload or replace task image
+ *     description: Allows a ranch owner or manager to upload or replace a task image.
+ *     tags: [Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskPublicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - image
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Task image uploaded successfully
+ *       400:
+ *         description: Image file is required
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Task not found
+ */
+router.post(
+    "/:slug/tasks/:taskPublicId/image",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    upload.single("image"),
+    uploadTaskImage
+);
+
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/tasks/{taskPublicId}/image:
+ *   delete:
+ *     summary: Remove task image
+ *     description: Allows a ranch owner or manager to remove a task image.
+ *     tags: [Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskPublicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Task image removed successfully
+ *       400:
+ *         description: Task has no image
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Task not found
+ */
+router.delete(
+    "/:slug/tasks/:taskPublicId/image",
+    requireAuth(),
+    requireRanchAccess("slug"),
+    removeTaskImage
 );
 
 export default router;

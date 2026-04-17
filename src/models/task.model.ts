@@ -33,6 +33,16 @@ export function TaskFactory(sequelize: Sequelize) {
                 allowNull: true,
             },
 
+            image_url: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+            },
+
+            image_public_id: {
+                type: DataTypes.STRING(255),
+                allowNull: true,
+            },
+
             assigned_to_user_id: {
                 type: DataTypes.UUID,
                 allowNull: false,
