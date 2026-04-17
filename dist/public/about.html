@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>About — SmartRUGA API</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+        margin: 0;
+        background: #0b1220;
+        color: #e6eaf2;
+      }
+      .wrap {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 48px 20px;
+      }
+      .card {
+        background: #111b33;
+        border: 1px solid #223158;
+        border-radius: 16px;
+        padding: 22px;
+        margin: 16px 0;
+      }
+      a {
+        color: #8dd6ff;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      code {
+        background: #0d1630;
+        border: 1px solid #223158;
+        padding: 2px 6px;
+        border-radius: 8px;
+      }
+      .muted {
+        color: #a9b4d0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>About SmartRUGA API</h1>
+      <p class="muted">
+        This API powers SmartRUGA — a livestock ranch management system with
+        workspaces (ranches), users, roles, invites, and future modules like
+        livestock health, vaccination, inventory, and events.
+      </p>
+
+      <div class="card">
+        <h2>Useful Links</h2>
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/api/v1/docs">Swagger Docs</a></li>
+          <li><a href="/api/v1/docs.json">OpenAPI JSON</a></li>
+          <li><a href="/health">Health</a></li>
+          <li><a href="/version">Version</a></li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Auth</h2>
+        <p class="muted">Most endpoints require a JWT access token:</p>
+        <p><code>Authorization: Bearer &lt;token&gt;</code></p>
+      </div>
+    </div>
+  </body>
+</html>

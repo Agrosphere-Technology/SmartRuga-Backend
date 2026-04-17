@@ -108,6 +108,10 @@ app.get("/docs", (_req, res) => {
   res.sendFile(path.join(__dirname, "../public/docs.html"));
 });
 
+app.get("/demo-users", (_req, res) => {
+  res.sendFile(path.join(__dirname, "../public/demo-users.html"));
+});
+
 app;
 
 export default app;

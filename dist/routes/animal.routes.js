@@ -6,12 +6,100 @@ Object.defineProperty(exports, "__esModule", { value: true });
  * tags:
  *   - name: Livestock
  *     description: Animals and species management within a ranch
+ *   - name: QR
+ *     description: QR code utilities for animal scanning
+ */
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     AnimalLookupItem:
+ *       type: object
+ *       properties:
+ *         publicId:
+ *           type: string
+ *           format: uuid
+ *         tagNumber:
+ *           type: string
+ *           nullable: true
+ *         rfidTag:
+ *           type: string
+ *           nullable: true
+ *         sex:
+ *           type: string
+ *           enum: [male, female, unknown]
+ *         dateOfBirth:
+ *           type: string
+ *           format: date-time
+ *           nullable: true
+ *         status:
+ *           type: string
+ *           enum: [active, sold, deceased]
+ *         imageUrl:
+ *           type: string
+ *           nullable: true
+ *         imagePublicId:
+ *           type: string
+ *           nullable: true
+ *         species:
+ *           type: object
+ *           nullable: true
+ *           properties:
+ *             id:
+ *               type: string
+ *               format: uuid
+ *             name:
+ *               type: string
+ *             code:
+ *               type: string
+ *               nullable: true
+ *
+ *     AnimalLookupResponse:
+ *       type: object
+ *       properties:
+ *         animal:
+ *           $ref: '#/components/schemas/AnimalLookupItem'
+ *
+ *     BulkAnimalLookupRequest:
+ *       type: object
+ *       required:
+ *         - identifiers
+ *       properties:
+ *         identifiers:
+ *           type: array
+ *           items:
+ *             type: string
+ *           example:
+ *             - "982000123456789"
+ *             - "WR-COW-0001"
+ *             - "0ec2f8a8-9f08-4cba-a7a6-1df4ce7dcefa"
+ *
+ *     BulkAnimalLookupResultItem:
+ *       type: object
+ *       properties:
+ *         identifier:
+ *           type: string
+ *         animal:
+ *           $ref: '#/components/schemas/AnimalLookupItem'
+ *
+ *     BulkAnimalLookupResponse:
+ *       type: object
+ *       properties:
+ *         found:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/BulkAnimalLookupResultItem'
+ *         notFound:
+ *           type: array
+ *           items:
+ *             type: string
  */
 /**
  * @openapi
  * /api/v1/ranches/{slug}/animals:
  *   post:
- *     tags: [Livestock]
+ *     tags:
+ *       - Livestock
  *     summary: Create an animal in a ranch
  *     security:
  *       - bearerAuth: []
@@ -25,9 +113,38 @@ Object.defineProperty(exports, "__esModule", { value: true });
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
- *             $ref: '#/components/schemas/CreateAnimalRequest'
+ *             type: object
+ *             required:
+ *               - speciesId
+ *               - sex
+ *             properties:
+ *               speciesId:
+ *                 type: string
+ *                 format: uuid
+ *               tagNumber:
+ *                 type: string
+ *                 nullable: true
+ *               rfidTag:
+ *                 type: string
+ *                 nullable: true
+ *               sex:
+ *                 type: string
+ *                 enum: [male, female, unknown]
+ *               dateOfBirth:
+ *                 type: string
+ *                 format: date
+ *                 nullable: true
+ *               breed:
+ *                 type: string
+ *                 nullable: true
+ *               weight:
+ *                 type: number
+ *                 nullable: true
+ *               image:
+ *                 type: string
+ *                 format: binary
  *     responses:
  *       201:
  *         description: Animal created
@@ -49,7 +166,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
  *         description: Server error
  *
  *   get:
- *     tags: [Livestock]
+ *     tags:
+ *       - Livestock
  *     summary: List animals in a ranch
  *     security:
  *       - bearerAuth: []
@@ -66,12 +184,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 animals:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Animal'
+ *               $ref: '#/components/schemas/AnimalListResponse'
  *       401:
  *         description: Unauthorized
  *       403:
@@ -81,9 +194,94 @@ Object.defineProperty(exports, "__esModule", { value: true });
  */
 /**
  * @openapi
+ * /api/v1/ranches/{slug}/animals/lookup:
+ *   get:
+ *     tags:
+ *       - Livestock
+ *     summary: Look up a single animal by public ID, RFID tag, or tag number
+ *     description: Useful for QR, RFID, or manual tag searches.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *       - in: query
+ *         name: identifier
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "982000123456789"
+ *     responses:
+ *       200:
+ *         description: Animal found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AnimalLookupResponse'
+ *       400:
+ *         description: Invalid request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Animal not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals/lookup/bulk:
+ *   post:
+ *     tags:
+ *       - Livestock
+ *     summary: Bulk look up animals by public IDs, RFID tags, or tag numbers
+ *     description: Useful for scanner sessions or bulk matching.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/BulkAnimalLookupRequest'
+ *     responses:
+ *       200:
+ *         description: Bulk lookup result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BulkAnimalLookupResponse'
+ *       400:
+ *         description: Invalid request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ */
+/**
+ * @openapi
  * /api/v1/ranches/{slug}/animals/{id}:
  *   get:
- *     tags: [Livestock]
+ *     tags:
+ *       - Livestock
  *     summary: Get an animal by internal ID (ranch scoped)
  *     security:
  *       - bearerAuth: []
@@ -106,7 +304,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Animal'
+ *               $ref: '#/components/schemas/AnimalLookupItem'
  *       404:
  *         description: Animal not found
  *         content:
@@ -122,9 +320,82 @@ Object.defineProperty(exports, "__esModule", { value: true });
  */
 /**
  * @openapi
+ * /api/v1/ranches/{slug}/animals/{id}:
+ *   patch:
+ *     tags:
+ *       - Livestock
+ *     summary: Update an animal (partial update)
+ *     description: |
+ *       Updates one or more animal fields.
+ *
+ *       Permissions:
+ *       - Owner: can update all fields including status
+ *       - Manager: can update all fields including status
+ *       - Vet: can update animal details but cannot change status
+ *       - Worker / Storekeeper: cannot update animals
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test-wolf-ranch
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateAnimalRequest'
+ *     responses:
+ *       200:
+ *         description: Animal updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UpdateAnimalResponse'
+ *       400:
+ *         description: Invalid payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Animal not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: Tag number or RFID tag already exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+/**
+ * @openapi
  * /api/v1/ranches/{slug}/animals/{id}/qr:
  *   get:
- *     tags: [QR]
+ *     tags:
+ *       - QR
  *     summary: Generate QR code PNG for an animal
  *     description: Returns a PNG image for printing animal tags. QR encodes the public scan URL (/a/{publicId}).
  *     security:
@@ -163,16 +434,98 @@ Object.defineProperty(exports, "__esModule", { value: true });
  *       500:
  *         description: Server error
  */
-// Import necessary modules and middlewares
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals/{id}/image:
+ *   post:
+ *     tags:
+ *       - Livestock
+ *     summary: Upload or replace animal image
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - image
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Animal image uploaded successfully
+ *       400:
+ *         description: Image file is required
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Animal not found
+ */
+/**
+ * @openapi
+ * /api/v1/ranches/{slug}/animals/{id}/image:
+ *   delete:
+ *     tags:
+ *       - Livestock
+ *     summary: Remove animal image
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Animal image removed successfully
+ *       400:
+ *         description: Animal does not have an image
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Animal not found
+ */
 const express_1 = require("express");
 const auth_1 = require("../middlewares/auth");
 const ranchAccess_1 = require("../middlewares/ranchAccess");
 const animal_controller_1 = require("../controllers/animal.controller");
 const animalQr_controller_1 = require("../controllers/animalQr.controller");
+const upload_1 = require("../middlewares/upload");
 const router = (0, express_1.Router)({ mergeParams: true });
-router.post("/:slug/animals", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), animal_controller_1.createAnimal);
+router.post("/:slug/animals", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), upload_1.upload.single("image"), animal_controller_1.createAnimal);
 router.get("/:slug/animals", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), animal_controller_1.listAnimals);
+router.get("/:slug/animals/lookup", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), animal_controller_1.lookupAnimal);
+router.post("/:slug/animals/lookup/bulk", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), animal_controller_1.bulkLookupAnimals);
 router.get("/:slug/animals/:id", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), animal_controller_1.getAnimalById);
-// generate qr code/image
+router.patch("/:slug/animals/:id", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), upload_1.upload.single("image"), animal_controller_1.updateAnimal);
 router.get("/:slug/animals/:id/qr", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), animalQr_controller_1.getAnimalQrPng);
+router.post("/:slug/animals/:id/image", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), upload_1.upload.single("image"), animal_controller_1.uploadAnimalImage);
+router.delete("/:slug/animals/:id/image", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), animal_controller_1.removeAnimalImage);
 exports.default = router;

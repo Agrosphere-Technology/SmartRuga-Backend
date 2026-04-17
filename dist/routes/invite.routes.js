@@ -25,4 +25,5 @@ const invite_controller_1 = require("../controllers/invite.controller");
 const router = (0, express_1.Router)();
 // Accept invite (token from email/link)
 router.post("/accept", (0, auth_1.requireAuth)(), invite_controller_1.acceptInvite);
+router.get("/invites/preview", invite_controller_1.previewInvite);
 exports.default = router;

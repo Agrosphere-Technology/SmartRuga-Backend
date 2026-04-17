@@ -18,6 +18,15 @@ function UserFactory(sequelize) {
         last_name: { type: sequelize_1.DataTypes.STRING(100), allowNull: true },
         email: { type: sequelize_1.DataTypes.STRING(255), allowNull: false, unique: true },
         password_hash: { type: sequelize_1.DataTypes.STRING(255), allowNull: false },
+        phone: { type: sequelize_1.DataTypes.STRING(30), allowNull: true },
+        image_url: {
+            type: sequelize_1.DataTypes.TEXT,
+            allowNull: true,
+        },
+        image_public_id: {
+            type: sequelize_1.DataTypes.STRING(255),
+            allowNull: true,
+        },
         platform_role: {
             type: sequelize_1.DataTypes.ENUM("user", "admin", "super_admin"),
             allowNull: false,

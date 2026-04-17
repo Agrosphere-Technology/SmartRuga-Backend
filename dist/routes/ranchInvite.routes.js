@@ -94,7 +94,7 @@ router.post("/:slug/invites", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requi
 // List invites for a ranch
 router.get("/:slug/invites", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), invite_controller_1.listInvites);
 // Revoke an invite
-router.delete("/:slug/invites/:inviteId", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), invite_controller_1.revokeInvite);
+router.delete("/:slug/invites/:invitePublicId", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), invite_controller_1.revokeInvite);
 // Resend an invite
-router.post("/:slug/invites/:inviteId/resend", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), invite_controller_1.resendInvite);
+router.post("/:slug/invites/:invitePublicId/resend", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), invite_controller_1.resendInvite);
 exports.default = router;

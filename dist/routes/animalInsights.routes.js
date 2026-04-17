@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_1 = require("../middlewares/auth");
+const ranchAccess_1 = require("../middlewares/ranchAccess");
+const animalTimeline_controller_1 = require("../controllers/animalTimeline.controller");
+const router = (0, express_1.Router)({ mergeParams: true });
+router.get("/:slug/animals/:animalId/timeline", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), animalTimeline_controller_1.getAnimalTimeline);
+router.get("/:slug/animals/:animalId/summary", (0, auth_1.requireAuth)(), (0, ranchAccess_1.requireRanchAccess)("slug"), animalTimeline_controller_1.getAnimalSummary);
+exports.default = router;

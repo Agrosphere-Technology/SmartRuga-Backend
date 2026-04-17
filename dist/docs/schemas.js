@@ -201,8 +201,17 @@ exports.swaggerSchemas = {
         properties: {
             speciesId: { type: "string", format: "uuid" },
             tagNumber: { type: "string", example: "COW-001" },
-            sex: { type: "string", enum: ["male", "female", "unknown"], example: "female" },
-            dateOfBirth: { type: "string", format: "date", example: "2023-05-01" },
+            rfidTag: { type: "string", nullable: true, example: "982000123456789" },
+            sex: {
+                type: "string",
+                enum: ["male", "female", "unknown"],
+                example: "female",
+            },
+            dateOfBirth: {
+                type: "string",
+                format: "date",
+                example: "2023-05-01",
+            },
         },
         required: ["speciesId"],
     },
@@ -219,14 +228,35 @@ exports.swaggerSchemas = {
         type: "object",
         properties: {
             id: { type: "string", format: "uuid" },
-            status: {
-                type: "string",
-                enum: ["healthy", "sick", "recovering", "quarantined"],
-            },
+            status: { $ref: "#/components/schemas/HealthStatus" },
             notes: { type: ["string", "null"] },
+            recordedBy: {
+                type: "object",
+                properties: {
+                    id: { type: "string", format: "uuid" },
+                    email: { type: "string", format: "email" },
+                    firstName: { type: ["string", "null"] },
+                    lastName: { type: ["string", "null"] },
+                },
+                required: ["id", "email"],
+            },
             createdAt: { type: "string", format: "date-time" },
         },
-        required: ["id", "status", "createdAt"],
+        required: ["id", "status", "recordedBy", "createdAt"],
+    },
+    HealthStatus: {
+        type: "string",
+        enum: ["healthy", "sick", "recovering", "quarantined"],
+    },
+    PaginationMeta: {
+        type: "object",
+        properties: {
+            page: { type: "integer", example: 1 },
+            limit: { type: "integer", example: 20 },
+            total: { type: "integer", example: 5 },
+            totalPages: { type: "integer", example: 1 },
+        },
+        required: ["page", "limit", "total", "totalPages"],
     },
     ListHealthEventsResponse: {
         type: "object",
@@ -238,4 +268,265 @@ exports.swaggerSchemas = {
         },
         required: ["healthEvents"],
     },
+    AnimalHealthHistoryResponse: {
+        type: "object",
+        properties: {
+            animal: {
+                type: "object",
+                properties: {
+                    id: { type: "string", format: "uuid" },
+                    publicId: { type: "string", format: "uuid" },
+                    tagNumber: { type: ["string", "null"] },
+                },
+                required: ["id", "publicId"],
+            },
+            pagination: { $ref: "#/components/schemas/PaginationMeta" },
+            events: {
+                type: "array",
+                items: { $ref: "#/components/schemas/HealthHistoryEvent" },
+            },
+        },
+        required: ["animal", "pagination", "events"],
+    },
+    AnimalLatestHealthResponse: {
+        type: "object",
+        properties: {
+            animal: {
+                type: "object",
+                properties: {
+                    id: { type: "string", format: "uuid" },
+                    publicId: { type: "string", format: "uuid" },
+                    tagNumber: { type: ["string", "null"] },
+                },
+                required: ["id", "publicId"],
+            },
+            latest: {
+                type: ["object", "null"],
+                properties: {
+                    id: { type: "string", format: "uuid" },
+                    status: { $ref: "#/components/schemas/HealthStatus" },
+                    notes: { type: ["string", "null"] },
+                    createdAt: { type: "string", format: "date-time" },
+                },
+            },
+            healthStatus: {
+                $ref: "#/components/schemas/HealthStatus",
+            },
+        },
+        required: ["animal", "healthStatus"],
+    },
+    AddAnimalHealthRequest: {
+        type: "object",
+        required: ["status"],
+        properties: {
+            status: { $ref: "#/components/schemas/HealthStatus" },
+            notes: { type: ["string", "null"], maxLength: 500 },
+        },
+    },
+    AnimalHealthBasicListResponse: {
+        type: "object",
+        properties: {
+            healthEvents: {
+                type: "array",
+                items: { $ref: "#/components/schemas/AnimalHealthEvent" },
+            },
+        },
+        required: ["healthEvents"],
+    },
+    AddAnimalHealthResponse: {
+        type: "object",
+        properties: {
+            message: { type: "string" },
+            animal: {
+                type: "object",
+                properties: {
+                    id: { type: "string", format: "uuid" },
+                    publicId: { type: "string", format: "uuid" },
+                    tagNumber: { type: ["string", "null"] },
+                },
+                required: ["id", "publicId"],
+            },
+            healthEvent: {
+                type: "object",
+                properties: {
+                    id: { type: "string", format: "uuid" },
+                    status: { $ref: "#/components/schemas/HealthStatus" },
+                    notes: { type: ["string", "null"] },
+                    recordedBy: { type: "string", format: "uuid" },
+                    createdAt: { type: "string", format: "date-time" },
+                },
+                required: ["id", "status", "recordedBy", "createdAt"],
+            },
+            healthStatus: { $ref: "#/components/schemas/HealthStatus" },
+        },
+        required: ["message", "animal", "healthEvent", "healthStatus"],
+    },
+    HealthHistoryEvent: {
+        type: "object",
+        properties: {
+            id: { type: "string", format: "uuid" },
+            status: { $ref: "#/components/schemas/HealthStatus" },
+            notes: { type: ["string", "null"] },
+            recordedBy: {
+                type: "object",
+                properties: {
+                    id: { type: "string", format: "uuid" },
+                    email: { type: "string", format: "email" },
+                    firstName: { type: ["string", "null"] },
+                    lastName: { type: ["string", "null"] },
+                },
+                required: ["id", "email"],
+            },
+            createdAt: { type: "string", format: "date-time" },
+        },
+        required: ["id", "status", "recordedBy", "createdAt"],
+    },
+    QrScanPublicResponse: {
+        type: "object",
+        properties: {
+            publicId: { type: "string", format: "uuid" },
+            tagNumber: { type: ["string", "null"] },
+            sex: { type: "string", enum: ["male", "female", "unknown"] },
+            status: { type: "string", enum: ["active", "sold", "deceased"] },
+            healthStatus: { $ref: "#/components/schemas/HealthStatus" }, // from Sprint 2
+            species: { $ref: "#/components/schemas/Species" },
+        },
+        required: ["publicId", "sex", "status", "healthStatus", "species"],
+    },
+    // UpdateAnimalResponse
+    UpdateAnimalRequest: {
+        type: "object",
+        properties: {
+            speciesId: { type: "string", format: "uuid" },
+            tagNumber: { type: ["string", "null"], example: "COW-002" },
+            rfidTag: { type: ["string", "null"], example: "982000123456789" },
+            sex: { type: "string", enum: ["male", "female", "unknown"] },
+            dateOfBirth: {
+                type: ["string", "null"],
+                format: "date",
+                example: "2023-05-01",
+            },
+            status: { type: "string", enum: ["active", "sold", "deceased"] },
+            statusNotes: {
+                type: ["string", "null"],
+                example: "Sold to partner ranch",
+            },
+        },
+        additionalProperties: false,
+    },
+    UpdateAnimalResponse: {
+        type: "object",
+        properties: {
+            message: { type: "string", example: "Animal updated" },
+            animal: {
+                type: "object",
+                properties: {
+                    id: { type: "string", format: "uuid" },
+                    publicId: { type: "string", format: "uuid" },
+                    tagNumber: { type: ["string", "null"] },
+                    sex: { type: "string", enum: ["male", "female", "unknown"] },
+                    dateOfBirth: { type: ["string", "null"], format: "date" },
+                    status: { type: "string", enum: ["active", "sold", "deceased"] },
+                    speciesId: { type: "string", format: "uuid" },
+                    updatedAt: { type: ["string", "null"], format: "date-time" },
+                },
+                required: ["id", "publicId", "sex", "status", "speciesId"],
+            },
+        },
+        required: ["message", "animal"],
+    },
+    // Ranch Activity
+    ActivityActor: {
+        type: "object",
+        properties: {
+            id: { type: "string", format: "uuid" },
+            email: { type: "string", format: "email" },
+            firstName: { type: ["string", "null"] },
+            lastName: { type: ["string", "null"] },
+        },
+        required: ["id", "email"],
+    },
+    ActivityAnimalRef: {
+        type: "object",
+        properties: {
+            id: { type: "string", format: "uuid" },
+            publicId: { type: ["string", "null"], format: "uuid" },
+            tagNumber: { type: ["string", "null"] },
+        },
+        required: ["id"],
+    },
+    ActivityEvent: {
+        type: "object",
+        properties: {
+            id: { type: "string", format: "uuid" },
+            eventType: { type: "string", example: "animal_update" },
+            field: { type: ["string", "null"], example: "status" },
+            fromValue: { type: ["string", "null"], example: "active" },
+            toValue: { type: ["string", "null"], example: "sold" },
+            notes: { type: ["string", "null"], example: "Sold at market" },
+            actor: { $ref: "#/components/schemas/ActivityActor" },
+            animal: { anyOf: [{ $ref: "#/components/schemas/ActivityAnimalRef" }, { type: "null" }] },
+            createdAt: { type: "string", format: "date-time" },
+        },
+        required: ["id", "eventType", "actor", "createdAt"],
+    },
+    ActivityFeedResponse: {
+        type: "object",
+        properties: {
+            pagination: { $ref: "#/components/schemas/PaginationMeta" },
+            events: {
+                type: "array",
+                items: { $ref: "#/components/schemas/ActivityEvent" },
+            },
+        },
+        required: ["pagination", "events"],
+    },
+    AnimalActivityFeedResponse: {
+        type: "object",
+        properties: {
+            animal: {
+                type: "object",
+                properties: {
+                    id: { type: "string", format: "uuid" },
+                    publicId: { type: "string", format: "uuid" },
+                    tagNumber: { type: ["string", "null"] },
+                },
+                required: ["id", "publicId"],
+            },
+            pagination: { $ref: "#/components/schemas/PaginationMeta" },
+            events: {
+                type: "array",
+                items: {
+                    allOf: [
+                        { $ref: "#/components/schemas/ActivityEvent" },
+                        {
+                            type: "object",
+                            properties: {
+                                animal: { type: "null" } // animal is implied by route
+                            }
+                        }
+                    ]
+                },
+            },
+        },
+        required: ["animal", "pagination", "events"],
+    },
+    AnimalListResponse: {
+        type: "object",
+        properties: {
+            animals: {
+                type: "array",
+                items: { $ref: "#/components/schemas/AnimalLookupItem" }
+            },
+            pagination: {
+                type: "object",
+                properties: {
+                    page: { type: "integer", example: 1 },
+                    limit: { type: "integer", example: 50 },
+                    total: { type: "integer", example: 234 },
+                    totalPages: { type: "integer", example: 5 }
+                }
+            }
+        }
+    }
 };

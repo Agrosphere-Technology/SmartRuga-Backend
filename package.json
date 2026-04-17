@@ -11,7 +11,8 @@
     "db:migrate": "npx sequelize-cli db:migrate",
     "db:seed": "npx sequelize-cli db:seed:all",
     "db:undo-seed": "npx sequelize-cli db:seed:undo:all",
-    "heroku-postbuild": "npm run build"
+    "heroku-postbuild": "npm run build",
+    "db:seed-dev": "npx tsx src/scripts/seed-demo-data.ts"
   },
   "keywords": [
     "smartruga",
@@ -26,6 +27,7 @@
   },
   "homepage": "",
   "dependencies": {
+    "@faker-js/faker": "^10.4.0",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.9.0",

@@ -10,7 +10,6 @@ function AnimalFactory(sequelize) {
             allowNull: false,
             defaultValue: sequelize_1.DataTypes.UUIDV4,
         },
-        // QR identity (safe public identifier)
         public_id: {
             type: sequelize_1.DataTypes.UUID,
             allowNull: false,
@@ -25,8 +24,25 @@ function AnimalFactory(sequelize) {
             type: sequelize_1.DataTypes.UUID,
             allowNull: false,
         },
+        current_location_id: {
+            type: sequelize_1.DataTypes.UUID,
+            allowNull: true,
+        },
         tag_number: {
             type: sequelize_1.DataTypes.STRING(100),
+            allowNull: true,
+        },
+        rfid_tag: {
+            type: sequelize_1.DataTypes.STRING(100),
+            allowNull: true,
+            unique: true,
+        },
+        breed: {
+            type: sequelize_1.DataTypes.STRING(120),
+            allowNull: true,
+        },
+        weight: {
+            type: sequelize_1.DataTypes.DECIMAL(10, 2),
             allowNull: true,
         },
         sex: {
@@ -42,6 +58,14 @@ function AnimalFactory(sequelize) {
             type: sequelize_1.DataTypes.ENUM("active", "sold", "deceased"),
             allowNull: false,
             defaultValue: "active",
+        },
+        image_url: {
+            type: sequelize_1.DataTypes.TEXT,
+            allowNull: true,
+        },
+        image_public_id: {
+            type: sequelize_1.DataTypes.STRING(255),
+            allowNull: true,
         },
     }, {
         tableName: "animals",

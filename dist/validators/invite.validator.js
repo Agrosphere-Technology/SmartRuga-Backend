@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.acceptInviteSchema = exports.createInviteSchema = void 0;
+exports.invitePreviewSchema = exports.acceptInviteSchema = exports.createInviteSchema = void 0;
 const zod_1 = require("zod");
 const roles_1 = require("../constants/roles");
 exports.createInviteSchema = zod_1.z.object({
@@ -15,4 +15,7 @@ exports.createInviteSchema = zod_1.z.object({
 });
 exports.acceptInviteSchema = zod_1.z.object({
     token: zod_1.z.string().min(20),
+});
+exports.invitePreviewSchema = zod_1.z.object({
+    token: zod_1.z.string().min(10),
 });

@@ -5,12 +5,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
 const express_1 = __importDefault(require("express"));
-const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const path_1 = __importDefault(require("path"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
+const user_routes_1 = __importDefault(require("./routes/user.routes"));
 const ranch_routes_1 = __importDefault(require("./routes/ranch.routes"));
 const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
 const invite_routes_1 = __importDefault(require("./routes/invite.routes"));
@@ -18,19 +18,29 @@ const ranchInvite_routes_1 = __importDefault(require("./routes/ranchInvite.route
 const animal_routes_1 = __importDefault(require("./routes/animal.routes"));
 const animalHealth_routes_1 = __importDefault(require("./routes/animalHealth.routes"));
 const species_routes_1 = __importDefault(require("./routes/species.routes"));
+const animalInsights_routes_1 = __importDefault(require("./routes/animalInsights.routes"));
+const activity_routes_1 = __importDefault(require("./routes/activity.routes"));
+const ranchAlert_routes_1 = __importDefault(require("./routes/ranchAlert.routes"));
+const vaccination_routes_1 = __importDefault(require("./routes/vaccination.routes"));
+const animalMovement_routes_1 = __importDefault(require("./routes/animalMovement.routes"));
+const ranchLocation_routes_1 = __importDefault(require("./routes/ranchLocation.routes"));
+const dashboard_route_1 = __importDefault(require("./routes/dashboard.route"));
+const task_routes_1 = __importDefault(require("./routes/task.routes"));
+const task_submission_routes_1 = __importDefault(require("./routes/task-submission.routes"));
+const inventory_routes_1 = __importDefault(require("./routes/inventory.routes"));
+const concern_routes_1 = __importDefault(require("./routes/concern.routes"));
 const qr_routes_1 = __importDefault(require("./routes/qr.routes"));
 const swagger_ui_express_1 = __importDefault(require("swagger-ui-express"));
 const swagger_1 = require("./docs/swagger");
 const logger_1 = require("./utils/logger");
+const corsConfig_1 = require("./config/corsConfig");
 const app = (0, express_1.default)();
 app.set("trust proxy", 1);
-const origins = (process.env.CORS_ORIGIN || "*")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-app.use((0, cors_1.default)({ origin: origins, credentials: true }));
+// CORS — MUST be early
+app.use((0, corsConfig_1.configureCors)());
 app.use((0, helmet_1.default)({ hsts: process.env.NODE_ENV === "production" ? undefined : false }));
 app.use((0, express_rate_limit_1.default)({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true }));
+// Security & parsing
 app.use(express_1.default.json({ limit: "1mb" }));
 app.use((0, cookie_parser_1.default)());
 app.use(logger_1.logMiddleware);
@@ -43,12 +53,24 @@ app.get("/version", (_req, res) => res.json({
 }));
 // routes
 app.use("/api/v1/auth", auth_routes_1.default);
+app.use("/api/v1/user", user_routes_1.default);
 app.use("/api/v1/ranches", ranch_routes_1.default);
 app.use("/api/v1/admin", admin_routes_1.default);
 app.use("/api/v1/invites", invite_routes_1.default);
 app.use("/api/v1/ranches", ranchInvite_routes_1.default);
+app.use("/api/v1/ranches", vaccination_routes_1.default);
 app.use("/api/v1/ranches", animal_routes_1.default);
 app.use("/api/v1/ranches", animalHealth_routes_1.default);
+app.use("/api/v1/ranches", animalInsights_routes_1.default);
+app.use("/api/v1/ranches", ranchAlert_routes_1.default);
+app.use("/api/v1/ranches", animalMovement_routes_1.default);
+app.use("/api/v1/ranches", activity_routes_1.default); // Ranch Activity
+app.use("/api/v1/ranches", ranchLocation_routes_1.default);
+app.use("/api/v1/ranches", dashboard_route_1.default);
+app.use("/api/v1/ranches", task_routes_1.default);
+app.use("/api/v1/ranches", task_submission_routes_1.default);
+app.use("/api/v1/ranches", inventory_routes_1.default);
+app.use("/api/v1/ranches", concern_routes_1.default);
 app.use("/api/v1", species_routes_1.default);
 app.use(qr_routes_1.default);
 // Swagger docs (enable/disable with env)
@@ -65,6 +87,9 @@ app.get("/about", (_req, res) => {
 });
 app.get("/docs", (_req, res) => {
     res.sendFile(path_1.default.join(__dirname, "../public/docs.html"));
+});
+app.get("/demo-users", (_req, res) => {
+    res.sendFile(path_1.default.join(__dirname, "../public/demo-users.html"));
 });
 app;
 exports.default = app;

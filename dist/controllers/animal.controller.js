@@ -3,117 +3,312 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createAnimal = createAnimal;
 exports.listAnimals = listAnimals;
 exports.getAnimalById = getAnimalById;
+exports.updateAnimal = updateAnimal;
+exports.lookupAnimal = lookupAnimal;
+exports.bulkLookupAnimals = bulkLookupAnimals;
+exports.uploadAnimalImage = uploadAnimalImage;
+exports.removeAnimalImage = removeAnimalImage;
 const http_status_codes_1 = require("http-status-codes");
 const models_1 = require("../models");
 const sequelize_1 = require("sequelize");
 const qr_1 = require("../utils/qr");
 const roles_1 = require("../constants/roles");
-// Create Animals
+const animal_validator_1 = require("../validators/animal.validator");
+const animalLookup_validator_1 = require("../validators/animalLookup.validator");
+const ranchAlert_service_1 = require("../services/ranchAlert.service");
+const cloudinary_service_1 = require("../services/cloudinary.service");
+const apiResponse_1 = require("../utils/apiResponse");
+function canTransition(from, to) {
+    if (from === to)
+        return true;
+    if (from === "active" && (to === "sold" || to === "deceased"))
+        return true;
+    return false;
+}
+function mapAnimalLookupResponse(animal) {
+    return {
+        publicId: animal.get("public_id"),
+        tagNumber: animal.get("tag_number"),
+        rfidTag: animal.get("rfid_tag"),
+        breed: animal.get("breed"),
+        weight: animal.get("weight"),
+        sex: animal.get("sex"),
+        dateOfBirth: animal.get("date_of_birth"),
+        status: animal.get("status"),
+        imageUrl: animal.get("image_url"),
+        imagePublicId: animal.get("image_public_id"),
+        species: animal.species
+            ? {
+                id: animal.species.id,
+                name: animal.species.name,
+                code: animal.species.code ?? null,
+            }
+            : null,
+    };
+}
+// Create Animal
 async function createAnimal(req, res) {
     try {
         const ranchId = req.ranch.id;
         const requesterRole = req.membership.ranchRole;
-        // Only owner, manager, vet can create animals
         if (requesterRole !== roles_1.RANCH_ROLES.OWNER &&
             requesterRole !== roles_1.RANCH_ROLES.MANAGER &&
             requesterRole !== roles_1.RANCH_ROLES.VET) {
-            return res
-                .status(http_status_codes_1.StatusCodes.FORBIDDEN)
-                .json({ message: "Not allowed to create animals" });
+            return res.status(http_status_codes_1.StatusCodes.FORBIDDEN).json((0, apiResponse_1.errorResponse)({
+                message: "Not allowed to create animals",
+            }));
         }
-        const { speciesId, tagNumber, sex, dateOfBirth } = req.body;
-        // Ensure species exists
+        const speciesId = req.body.speciesId;
+        const tagNumber = req.body.tagNumber;
+        const rfidTag = req.body.rfidTag;
+        const sex = req.body.sex;
+        const dateOfBirth = req.body.dateOfBirth;
+        const breed = req.body.breed;
+        const weight = req.body.weight !== undefined &&
+            req.body.weight !== null &&
+            String(req.body.weight).trim() !== ""
+            ? Number(req.body.weight)
+            : null;
         const species = await models_1.Species.findByPk(speciesId);
         if (!species) {
-            return res
-                .status(http_status_codes_1.StatusCodes.BAD_REQUEST)
-                .json({ message: "Invalid species" });
+            return res.status(http_status_codes_1.StatusCodes.BAD_REQUEST).json((0, apiResponse_1.errorResponse)({
+                message: "Invalid species",
+            }));
         }
-        // check if tagNumber already exists to avoid duplication
         if (tagNumber) {
+            const normalizedTag = String(tagNumber).toUpperCase().trim();
             const dup = await models_1.Animal.findOne({
-                where: { ranch_id: ranchId, tag_number: tagNumber },
+                where: { ranch_id: ranchId, tag_number: normalizedTag },
             });
             if (dup) {
-                return res.status(http_status_codes_1.StatusCodes.CONFLICT).json({
+                return res.status(http_status_codes_1.StatusCodes.CONFLICT).json((0, apiResponse_1.errorResponse)({
                     message: "Tag number already exists in this ranch",
-                });
+                }));
+            }
+        }
+        if (rfidTag) {
+            const normalizedRfid = String(rfidTag).trim();
+            const dupRfid = await models_1.Animal.findOne({
+                where: { rfid_tag: normalizedRfid },
+            });
+            if (dupRfid) {
+                return res.status(http_status_codes_1.StatusCodes.CONFLICT).json((0, apiResponse_1.errorResponse)({
+                    message: "RFID tag already exists",
+                }));
             }
         }
         const animal = await models_1.Animal.create({
             ranch_id: ranchId,
             species_id: speciesId,
-            tag_number: tagNumber ?? null,
+            tag_number: tagNumber ? String(tagNumber).toUpperCase().trim() : null,
+            rfid_tag: rfidTag ? String(rfidTag).trim() : null,
             sex,
             date_of_birth: dateOfBirth ?? null,
+            breed: breed ?? null,
+            weight,
+            image_url: null,
+            image_public_id: null,
         });
-        return res.status(http_status_codes_1.StatusCodes.CREATED).json({
-            id: animal.get("id"),
-            publicId: animal.get("public_id"),
-            qrUrl: (0, qr_1.buildAnimalQrUrl)(animal.get("public_id")),
-        });
+        if (req.file) {
+            const uploadResult = await (0, cloudinary_service_1.uploadBufferToCloudinary)(req.file.buffer, `smartruga/animals/${ranchId}`, `animal-${animal.get("public_id")}`);
+            await animal.update({
+                image_url: uploadResult.secureUrl,
+                image_public_id: uploadResult.publicId,
+            });
+        }
+        return res.status(http_status_codes_1.StatusCodes.CREATED).json((0, apiResponse_1.successResponse)({
+            message: "Animal created successfully",
+            data: {
+                animal: {
+                    id: animal.get("id"),
+                    publicId: animal.get("public_id"),
+                    tagNumber: animal.get("tag_number"),
+                    rfidTag: animal.get("rfid_tag"),
+                    speciesId: animal.get("species_id"),
+                    breed: animal.get("breed"),
+                    weight: animal.get("weight"),
+                    sex: animal.get("sex"),
+                    dateOfBirth: animal.get("date_of_birth"),
+                    status: animal.get("status"),
+                    imageUrl: animal.get("image_url"),
+                    imagePublicId: animal.get("image_public_id"),
+                    qrUrl: (0, qr_1.buildAnimalQrUrl)(animal.get("public_id")),
+                },
+            },
+        }));
     }
     catch (err) {
         console.error("CREATE_ANIMAL_ERROR:", err);
-        return res.status(http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR).json({
+        return res.status(http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR).json((0, apiResponse_1.errorResponse)({
             message: "Failed to create animal",
-        });
+            errors: err?.message ?? "Unknown error",
+        }));
     }
 }
-//  List Animals
+// List Animals
 async function listAnimals(req, res) {
     try {
         const ranchId = req.ranch.id;
-        const animals = await models_1.Animal.findAll({
-            where: { ranch_id: ranchId },
-            include: [
-                {
-                    model: models_1.Species,
-                    as: "species",
-                    attributes: ["id", "name", "code"],
-                },
-            ],
-            order: [["created_at", "DESC"]],
-        });
-        if (animals.length === 0)
-            return res.json({ animals: [] });
-        const animalIds = animals.map((a) => a.get("id"));
-        const latestHealthRows = await models_1.sequelize.query(`
-      SELECT DISTINCT ON (animal_id)
-        animal_id,
-        status
-      FROM animal_health_events
-      WHERE animal_id = ANY($1::uuid[])
-      ORDER BY animal_id, created_at DESC
-      `, {
-            bind: [animalIds],
-            type: sequelize_1.QueryTypes.SELECT,
-        });
-        const healthMap = new Map();
-        for (const row of latestHealthRows) {
-            healthMap.set(row.animal_id, row.status);
+        const parsed = animal_validator_1.listAnimalsQuerySchema.safeParse(req.query);
+        if (!parsed.success) {
+            return res.status(http_status_codes_1.StatusCodes.BAD_REQUEST).json((0, apiResponse_1.errorResponse)({
+                message: "Invalid query params",
+                errors: parsed.error.issues,
+            }));
         }
-        return res.status(http_status_codes_1.StatusCodes.OK).json({
-            animals: animals.map((animal) => {
-                const id = animal.get("id");
-                return {
-                    id,
-                    publicId: animal.get("public_id"),
-                    tagNumber: animal.get("tag_number"),
-                    sex: animal.get("sex"),
-                    status: animal.get("status"),
-                    healthStatus: healthMap.get(id) ?? "healthy",
-                    species: animal.species,
-                };
-            }),
+        const { page, limit, speciesId, status, sex, healthStatus, q, sortBy, sortOrder, } = parsed.data;
+        const offset = (page - 1) * limit;
+        const sortColumn = sortBy === "tagNumber" ? "a.tag_number" : "a.created_at";
+        const sortDir = sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
+        const whereParts = [`a.ranch_id = $1`];
+        const binds = [ranchId];
+        if (speciesId) {
+            binds.push(speciesId);
+            whereParts.push(`a.species_id = $${binds.length}`);
+        }
+        if (status) {
+            binds.push(status);
+            whereParts.push(`a.status = $${binds.length}`);
+        }
+        if (sex) {
+            binds.push(sex);
+            whereParts.push(`a.sex = $${binds.length}`);
+        }
+        if (q) {
+            binds.push(`%${q}%`);
+            whereParts.push(`(
+        a.tag_number ILIKE $${binds.length}
+        OR a.rfid_tag ILIKE $${binds.length}
+      )`);
+        }
+        if (healthStatus) {
+            binds.push(healthStatus);
+            whereParts.push(`COALESCE(h.status, 'healthy') = $${binds.length}`);
+        }
+        const whereSql = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
+        const countRows = await models_1.sequelize.query(`
+      SELECT COUNT(*)::text AS total
+      FROM animals a
+      LEFT JOIN LATERAL (
+        SELECT status
+        FROM animal_health_events e
+        WHERE e.animal_id = a.id
+        ORDER BY e.created_at DESC
+        LIMIT 1
+      ) h ON true
+      ${whereSql}
+      `, { bind: binds, type: sequelize_1.QueryTypes.SELECT });
+        const total = Number(countRows[0]?.total ?? "0");
+        const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+        if (total === 0) {
+            return res.status(http_status_codes_1.StatusCodes.OK).json((0, apiResponse_1.successResponse)({
+                message: "Animals fetched successfully",
+                data: {
+                    animals: [],
+                },
+                meta: {
+                    pagination: { page, limit, total, totalPages },
+                    filters: {
+                        speciesId: speciesId ?? null,
+                        status: status ?? null,
+                        sex: sex ?? null,
+                        healthStatus: healthStatus ?? null,
+                        q: q ?? null,
+                        sortBy,
+                        sortOrder,
+                    },
+                },
+            }));
+        }
+        const idsRows = await models_1.sequelize.query(`
+      SELECT a.id
+      FROM animals a
+      LEFT JOIN LATERAL (
+        SELECT status
+        FROM animal_health_events e
+        WHERE e.animal_id = a.id
+        ORDER BY e.created_at DESC
+        LIMIT 1
+      ) h ON true
+      ${whereSql}
+      ORDER BY ${sortColumn} ${sortDir}, a.id ${sortDir}
+      LIMIT ${limit} OFFSET ${offset}
+      `, { bind: binds, type: sequelize_1.QueryTypes.SELECT });
+        const animalIds = idsRows.map((r) => r.id);
+        const animals = await models_1.Animal.findAll({
+            where: { id: { [sequelize_1.Op.in]: animalIds } },
+            include: [
+                { model: models_1.Species, as: "species", attributes: ["id", "name", "code"] },
+            ],
         });
+        const healthRows = await models_1.sequelize.query(`
+      SELECT
+        a.id AS animal_id,
+        COALESCE(h.status, 'healthy') AS status
+      FROM animals a
+      LEFT JOIN LATERAL (
+        SELECT status
+        FROM animal_health_events e
+        WHERE e.animal_id = a.id
+        ORDER BY e.created_at DESC
+        LIMIT 1
+      ) h ON true
+      WHERE a.id = ANY($1::uuid[])
+      `, { bind: [animalIds], type: sequelize_1.QueryTypes.SELECT });
+        const healthMap = new Map();
+        for (const r of healthRows) {
+            healthMap.set(r.animal_id, r.status ?? "healthy");
+        }
+        const animalById = new Map();
+        for (const a of animals) {
+            const id = a.get("id");
+            animalById.set(id, a);
+        }
+        const ordered = animalIds.map((id) => animalById.get(id)).filter(Boolean);
+        return res.status(http_status_codes_1.StatusCodes.OK).json((0, apiResponse_1.successResponse)({
+            message: "Animals fetched successfully",
+            data: {
+                animals: ordered.map((animal) => {
+                    const id = animal.get("id");
+                    return {
+                        id,
+                        publicId: animal.get("public_id"),
+                        qrUrl: (0, qr_1.buildAnimalQrUrl)(animal.get("public_id")),
+                        tagNumber: animal.get("tag_number"),
+                        rfidTag: animal.get("rfid_tag"),
+                        breed: animal.get("breed"),
+                        weight: animal.get("weight"),
+                        sex: animal.get("sex"),
+                        status: animal.get("status"),
+                        healthStatus: healthMap.get(id) ?? "healthy",
+                        imageUrl: animal.get("image_url"),
+                        imagePublicId: animal.get("image_public_id"),
+                        species: animal.species,
+                        createdAt: animal.get("created_at"),
+                        updatedAt: animal.get("updated_at"),
+                    };
+                }),
+            },
+            meta: {
+                pagination: { page, limit, total, totalPages },
+                filters: {
+                    speciesId: speciesId ?? null,
+                    status: status ?? null,
+                    sex: sex ?? null,
+                    healthStatus: healthStatus ?? null,
+                    q: q ?? null,
+                    sortBy,
+                    sortOrder,
+                },
+            },
+        }));
     }
     catch (err) {
         console.error("LIST_ANIMALS_ERROR:", err);
-        return res.status(http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR).json({
+        return res.status(http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR).json((0, apiResponse_1.errorResponse)({
             message: "Failed to list animals",
-            error: err?.message ?? "Unknown error",
-        });
+            errors: err?.message ?? "Unknown error",
+        }));
     }
 }
 // Get Animal By ID
@@ -132,40 +327,589 @@ async function getAnimalById(req, res) {
             ],
         });
         if (!animal) {
-            return res
-                .status(http_status_codes_1.StatusCodes.NOT_FOUND)
-                .json({ message: "Animal not found" });
+            return res.status(http_status_codes_1.StatusCodes.NOT_FOUND).json((0, apiResponse_1.errorResponse)({
+                message: "Animal not found",
+            }));
         }
-        // ✅ latest health status
         const rows = await models_1.sequelize.query(`
-        SELECT status
-        FROM animal_health_events
-        WHERE animal_id = $1
-        ORDER BY created_at DESC
-        LIMIT 1
+      SELECT status
+      FROM animal_health_events
+      WHERE animal_id = $1
+      ORDER BY created_at DESC
+      LIMIT 1
       `, {
             bind: [id],
             type: sequelize_1.QueryTypes.SELECT,
         });
         const healthStatus = rows[0]?.status ?? "healthy";
-        return res.json({
-            id: animal.get("id"),
-            publicId: animal.get("public_id"),
-            qrUrl: (0, qr_1.buildAnimalQrUrl)(animal.get("public_id")),
-            tagNumber: animal.get("tag_number"),
-            sex: animal.get("sex"),
-            dateOfBirth: animal.get("date_of_birth"),
-            status: animal.get("status"),
-            healthStatus,
-            species: animal.species,
-            createdAt: animal.get("created_at"),
-            updatedAt: animal.get("updated_at"),
-        });
+        const publicId = animal.get("public_id");
+        return res.status(http_status_codes_1.StatusCodes.OK).json((0, apiResponse_1.successResponse)({
+            message: "Animal fetched successfully",
+            data: {
+                animal: {
+                    id: animal.get("id"),
+                    publicId,
+                    qrUrl: (0, qr_1.buildAnimalQrUrl)(publicId),
+                    tagNumber: animal.get("tag_number"),
+                    rfidTag: animal.get("rfid_tag"),
+                    breed: animal.get("breed"),
+                    weight: animal.get("weight"),
+                    sex: animal.get("sex"),
+                    dateOfBirth: animal.get("date_of_birth"),
+                    status: animal.get("status"),
+                    healthStatus,
+                    imageUrl: animal.get("image_url"),
+                    imagePublicId: animal.get("image_public_id"),
+                    species: animal.species,
+                    createdAt: animal.get("created_at"),
+                    updatedAt: animal.get("updated_at"),
+                },
+            },
+        }));
     }
     catch (err) {
         console.error("GET_ANIMAL_ERROR:", err);
-        return res
-            .status(http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR)
-            .json({ message: "Failed to fetch animal" });
+        return res.status(http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR).json((0, apiResponse_1.errorResponse)({
+            message: "Failed to fetch animal",
+            errors: err?.message ?? "Unknown error",
+        }));
+    }
+}
+// Update Animal
+async function updateAnimal(req, res) {
+    const t = await models_1.sequelize.transaction();
+    try {
+        const parsed = animal_validator_1.updateAnimalSchema.safeParse(req.body);
+        if (!parsed.success) {
+            await t.rollback();
+            return res.status(http_status_codes_1.StatusCodes.BAD_REQUEST).json((0, apiResponse_1.errorResponse)({
+                message: "Invalid payload",
+                errors: parsed.error.issues,
+            }));
+        }
+        const ranchId = req.ranch.id;
+        const { id } = req.params;
+        const recorderId = req.user.id;
+        const animalId = String(req.params.id);
+        const requesterRole = req.membership.ranchRole;
+        const canUpdate = requesterRole === roles_1.RANCH_ROLES.OWNER ||
+            requesterRole === roles_1.RANCH_ROLES.MANAGER ||
+            requesterRole === roles_1.RANCH_ROLES.VET;
+        const canChangeStatus = requesterRole === roles_1.RANCH_ROLES.OWNER ||
+            requesterRole === roles_1.RANCH_ROLES.MANAGER;
+        if (!canUpdate) {
+            await t.rollback();
+            return res.status(http_status_codes_1.StatusCodes.FORBIDDEN).json((0, apiResponse_1.errorResponse)({
+                message: "Not allowed to update animals",
+            }));
+        }
+        const animal = await models_1.Animal.findOne({
+            where: { id, ranch_id: ranchId },
+            transaction: t,
+        });
+        if (!animal) {
+            await t.rollback();
+            return res.status(http_status_codes_1.StatusCodes.NOT_FOUND).json((0, apiResponse_1.errorResponse)({
+                message: "Animal not found",
+            }));
+        }
+        const { speciesId, tagNumber, rfidTag, sex, dateOfBirth, breed, weight, status, statusNotes, imageUrl, imagePublicId, } = parsed.data;
+        if (speciesId) {
+            const species = await models_1.Species.findByPk(speciesId, { transaction: t });
+            if (!species) {
+                await t.rollback();
+                return res.status(http_status_codes_1.StatusCodes.BAD_REQUEST).json((0, apiResponse_1.errorResponse)({
+                    message: "Invalid species",
+                }));
+            }
+        }
+        if (tagNumber !== undefined) {
+            const normalized = tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
+            if (normalized) {
+                const dup = await models_1.Animal.findOne({
+                    where: { ranch_id: ranchId, tag_number: normalized },
+                    transaction: t,
+                });
+                if (dup && dup.get("id") !== animal.get("id")) {
+                    await t.rollback();
+                    return res.status(http_status_codes_1.StatusCodes.CONFLICT).json((0, apiResponse_1.errorResponse)({
+                        message: "Tag number already exists in this ranch",
+                    }));
+                }
+            }
+        }
+        if (rfidTag !== undefined) {
+            const normalizedRfid = rfidTag === null ? null : String(rfidTag).trim();
+            if (normalizedRfid) {
+                const dupRfid = await models_1.Animal.findOne({
+                    where: { rfid_tag: normalizedRfid },
+                    transaction: t,
+                });
+                if (dupRfid &&
+                    dupRfid.get("id") !== animal.get("id")) {
+                    await t.rollback();
+                    return res.status(http_status_codes_1.StatusCodes.CONFLICT).json((0, apiResponse_1.errorResponse)({
+                        message: "RFID tag already exists",
+                    }));
+                }
+            }
+        }
+        const updates = {};
+        if (speciesId !== undefined)
+            updates.species_id = speciesId;
+        if (tagNumber !== undefined) {
+            updates.tag_number =
+                tagNumber === null ? null : String(tagNumber).toUpperCase().trim();
+        }
+        if (rfidTag !== undefined) {
+            updates.rfid_tag = rfidTag === null ? null : String(rfidTag).trim();
+        }
+        if (sex !== undefined)
+            updates.sex = sex;
+        if (dateOfBirth !== undefined) {
+            updates.date_of_birth = dateOfBirth;
+        }
+        if (breed !== undefined) {
+            updates.breed = breed === null ? null : String(breed).trim();
+        }
+        if (weight !== undefined) {
+            updates.weight = weight;
+        }
+        if (imageUrl !== undefined) {
+            updates.image_url = imageUrl;
+        }
+        if (imagePublicId !== undefined) {
+            updates.image_public_id = imagePublicId;
+        }
+        const activityEvents = [];
+        const pushIfChanged = (field, fromVal, toVal, notes) => {
+            const fromStr = fromVal === undefined || fromVal === null ? null : String(fromVal);
+            const toStr = toVal === undefined || toVal === null ? null : String(toVal);
+            if (fromStr !== toStr) {
+                activityEvents.push({
+                    ranch_id: ranchId,
+                    animal_id: animal.get("id"),
+                    event_type: "animal_update",
+                    field,
+                    from_value: fromStr,
+                    to_value: toStr,
+                    notes: notes ?? null,
+                    recorded_by: recorderId,
+                    created_at: new Date(),
+                });
+            }
+        };
+        if (speciesId !== undefined) {
+            pushIfChanged("species_id", animal.get("species_id"), updates.species_id);
+        }
+        if (tagNumber !== undefined) {
+            pushIfChanged("tag_number", animal.get("tag_number"), updates.tag_number);
+        }
+        if (rfidTag !== undefined) {
+            pushIfChanged("rfid_tag", animal.get("rfid_tag"), updates.rfid_tag);
+        }
+        if (sex !== undefined) {
+            pushIfChanged("sex", animal.get("sex"), updates.sex);
+        }
+        if (dateOfBirth !== undefined) {
+            pushIfChanged("date_of_birth", animal.get("date_of_birth"), updates.date_of_birth);
+        }
+        if (breed !== undefined) {
+            pushIfChanged("breed", animal.get("breed"), updates.breed);
+        }
+        if (weight !== undefined) {
+            pushIfChanged("weight", animal.get("weight"), updates.weight);
+        }
+        if (imageUrl !== undefined) {
+            pushIfChanged("image_url", animal.get("image_url"), updates.image_url);
+        }
+        if (imagePublicId !== undefined) {
+            pushIfChanged("image_public_id", animal.get("image_public_id"), updates.image_public_id);
+        }
+        const currentStatus = animal.get("status");
+        if (status !== undefined && status !== null) {
+            const nextStatus = status;
+            const isChanging = currentStatus !== nextStatus;
+            if (isChanging && !canChangeStatus) {
+                await t.rollback();
+                return res.status(http_status_codes_1.StatusCodes.FORBIDDEN).json((0, apiResponse_1.errorResponse)({
+                    message: "Only owner or manager can change animal status",
+                }));
+            }
+            if (!canTransition(currentStatus, nextStatus)) {
+                await t.rollback();
+                return res.status(http_status_codes_1.StatusCodes.BAD_REQUEST).json((0, apiResponse_1.errorResponse)({
+                    message: `Invalid status transition: ${currentStatus} -> ${nextStatus}`,
+                }));
+            }
+            const requiresNote = nextStatus === "sold" || nextStatus === "deceased";
+            if (isChanging && requiresNote) {
+                const note = (statusNotes ?? "").toString().trim();
+                if (!note) {
+                    await t.rollback();
+                    return res.status(http_status_codes_1.StatusCodes.BAD_REQUEST).json((0, apiResponse_1.errorResponse)({
+                        message: "statusNotes is required when status is sold or deceased",
+                    }));
+                }
+            }
+            if (isChanging) {
+                const notes = statusNotes ? String(statusNotes).trim() : null;
+                updates.status = nextStatus;
+                await models_1.sequelize.query(`
+          INSERT INTO animal_status_events
+            (id, animal_id, from_status, to_status, notes, recorded_by, created_at)
+          VALUES
+            (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())
+          RETURNING id, animal_id, from_status, to_status, notes, recorded_by, created_at
+          `, {
+                    bind: [id, currentStatus, nextStatus, notes, recorderId],
+                    type: sequelize_1.QueryTypes.SELECT,
+                    transaction: t,
+                });
+                pushIfChanged("status", currentStatus, nextStatus, notes);
+                if (nextStatus === "sold" || nextStatus === "deceased") {
+                    const alertType = nextStatus === "sold" ? "status_sold" : "status_deceased";
+                    const tag = animal.get("tag_number") ?? "UN-TAGGED";
+                    const msg = `Animal ${tag} status changed: ${currentStatus} → ${nextStatus}. ${notes ?? ""}`.trim();
+                    await (0, ranchAlert_service_1.createRanchAlert)({
+                        ranchId,
+                        animalId,
+                        alertType,
+                        title: nextStatus === "sold" ? "Animal sold alert" : "Animal deceased alert",
+                        message: msg,
+                        priority: "high",
+                        entityType: "animal",
+                        entityPublicId: String(animal.get("public_id")),
+                        transaction: t,
+                        dedupe: true,
+                        dedupeMinutes: 60,
+                    });
+                }
+            }
+        }
+        await animal.update(updates, { transaction: t });
+        if (activityEvents.length > 0) {
+            await models_1.AnimalActivityEvent.bulkCreate(activityEvents, { transaction: t });
+        }
+        await t.commit();
+        return res.status(http_status_codes_1.StatusCodes.OK).json((0, apiResponse_1.successResponse)({
+            message: "Animal updated successfully",
+            data: {
+                animal: {
+                    id: animal.get("id"),
+                    publicId: animal.get("public_id"),
+                    tagNumber: animal.get("tag_number"),
+                    rfidTag: animal.get("rfid_tag"),
+                    breed: animal.get("breed"),
+                    weight: animal.get("weight"),
+                    sex: animal.get("sex"),
+                    dateOfBirth: animal.get("date_of_birth"),
+                    status: animal.get("status"),
+                    speciesId: animal.get("species_id"),
+                    imageUrl: animal.get("image_url"),
+                    imagePublicId: animal.get("image_public_id"),
+                    updatedAt: animal.get("updated_at"),
+                },
+            },
+        }));
+    }
+    catch (err) {
+        await t.rollback();
+        console.error("UPDATE_ANIMAL_ERROR:", err);
+        return res.status(http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR).json((0, apiResponse_1.errorResponse)({
+            message: "Failed to update animal",
+            errors: err?.message ?? "Unknown error",
+        }));
+    }
+}
+// Single lookup by public_id, RFID tag, or tag number
+async function lookupAnimal(req, res) {
+    try {
+        const parsed = animalLookup_validator_1.animalLookupSchema.safeParse(req.query);
+        if (!parsed.success) {
+            return res.status(http_status_codes_1.StatusCodes.BAD_REQUEST).json((0, apiResponse_1.errorResponse)({
+                message: "Invalid lookup query",
+                errors: parsed.error.issues,
+            }));
+        }
+        const ranchId = req.ranch.id;
+        const identifier = parsed.data.identifier.trim();
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier);
+        const orConditions = [
+            { rfid_tag: identifier },
+            { tag_number: identifier },
+        ];
+        if (isUuid) {
+            orConditions.unshift({ public_id: identifier });
+        }
+        const animal = await models_1.Animal.findOne({
+            where: {
+                ranch_id: ranchId,
+                [sequelize_1.Op.or]: orConditions,
+            },
+            include: [
+                {
+                    model: models_1.Species,
+                    as: "species",
+                    attributes: ["id", "name", "code"],
+                    required: false,
+                },
+            ],
+        });
+        if (!animal) {
+            return res.status(http_status_codes_1.StatusCodes.NOT_FOUND).json((0, apiResponse_1.errorResponse)({
+                message: "Animal not found",
+            }));
+        }
+        return res.status(http_status_codes_1.StatusCodes.OK).json((0, apiResponse_1.successResponse)({
+            message: "Animal looked up successfully",
+            data: {
+                animal: mapAnimalLookupResponse(animal),
+            },
+        }));
+    }
+    catch (err) {
+        console.error("LOOKUP_ANIMAL_ERROR:", err);
+        return res.status(http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR).json((0, apiResponse_1.errorResponse)({
+            message: "Failed to look up animal",
+            errors: err?.message ?? "Unknown error",
+        }));
+    }
+}
+// Bulk lookup by public_id, RFID tag, or tag number
+async function bulkLookupAnimals(req, res) {
+    try {
+        const parsed = animalLookup_validator_1.bulkAnimalLookupSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(http_status_codes_1.StatusCodes.BAD_REQUEST).json((0, apiResponse_1.errorResponse)({
+                message: "Invalid payload",
+                errors: parsed.error.issues,
+            }));
+        }
+        const ranchId = req.ranch.id;
+        const identifiers = parsed.data.identifiers.map((v) => v.trim());
+        const uuidIdentifiers = identifiers.filter((identifier) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier));
+        const orConditions = [
+            { rfid_tag: { [sequelize_1.Op.in]: identifiers } },
+            { tag_number: { [sequelize_1.Op.in]: identifiers } },
+        ];
+        if (uuidIdentifiers.length > 0) {
+            orConditions.unshift({ public_id: { [sequelize_1.Op.in]: uuidIdentifiers } });
+        }
+        const animals = await models_1.Animal.findAll({
+            where: {
+                ranch_id: ranchId,
+                [sequelize_1.Op.or]: orConditions,
+            },
+            include: [
+                {
+                    model: models_1.Species,
+                    as: "species",
+                    attributes: ["id", "name", "code"],
+                    required: false,
+                },
+            ],
+        });
+        const foundByIdentifier = new Map();
+        for (const animal of animals) {
+            const publicId = animal.get("public_id");
+            const rfidTag = animal.get("rfid_tag");
+            const tagNumber = animal.get("tag_number");
+            if (publicId)
+                foundByIdentifier.set(publicId, animal);
+            if (rfidTag)
+                foundByIdentifier.set(rfidTag, animal);
+            if (tagNumber)
+                foundByIdentifier.set(tagNumber, animal);
+        }
+        const found = [];
+        const notFound = [];
+        for (const identifier of identifiers) {
+            const animal = foundByIdentifier.get(identifier);
+            if (animal) {
+                found.push({
+                    identifier,
+                    animal: mapAnimalLookupResponse(animal),
+                });
+            }
+            else {
+                notFound.push(identifier);
+            }
+        }
+        return res.status(http_status_codes_1.StatusCodes.OK).json((0, apiResponse_1.successResponse)({
+            message: "Bulk animal lookup completed successfully",
+            data: {
+                found,
+                notFound,
+            },
+        }));
+    }
+    catch (err) {
+        console.error("BULK_LOOKUP_ANIMALS_ERROR:", err);
+        return res.status(http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR).json((0, apiResponse_1.errorResponse)({
+            message: "Failed to bulk look up animals",
+            errors: err?.message ?? "Unknown error",
+        }));
+    }
+}
+async function uploadAnimalImage(req, res) {
+    try {
+        const ranchId = req.ranch.id;
+        const { id } = req.params;
+        const requesterRole = req.membership.ranchRole;
+        const recorderId = req.user.id;
+        const canUpdate = requesterRole === roles_1.RANCH_ROLES.OWNER ||
+            requesterRole === roles_1.RANCH_ROLES.MANAGER ||
+            requesterRole === roles_1.RANCH_ROLES.VET;
+        if (!canUpdate) {
+            return res.status(http_status_codes_1.StatusCodes.FORBIDDEN).json((0, apiResponse_1.errorResponse)({
+                message: "Not allowed to upload animal image",
+            }));
+        }
+        if (!req.file) {
+            return res.status(http_status_codes_1.StatusCodes.BAD_REQUEST).json((0, apiResponse_1.errorResponse)({
+                message: "Image file is required",
+            }));
+        }
+        const animal = await models_1.Animal.findOne({
+            where: { id, ranch_id: ranchId },
+        });
+        if (!animal) {
+            return res.status(http_status_codes_1.StatusCodes.NOT_FOUND).json((0, apiResponse_1.errorResponse)({
+                message: "Animal not found",
+            }));
+        }
+        const oldImagePublicId = animal.get("image_public_id");
+        const uploadResult = await (0, cloudinary_service_1.uploadBufferToCloudinary)(req.file.buffer, `smartruga/animals/${ranchId}`, `animal-${animal.get("public_id")}`);
+        if (oldImagePublicId && oldImagePublicId !== uploadResult.publicId) {
+            await (0, cloudinary_service_1.deleteFromCloudinary)(oldImagePublicId);
+        }
+        const previousImageUrl = animal.get("image_url");
+        const previousImagePublicId = animal.get("image_public_id");
+        await animal.update({
+            image_url: uploadResult.secureUrl,
+            image_public_id: uploadResult.publicId,
+        });
+        const activityEvents = [];
+        const pushIfChanged = (field, fromVal, toVal) => {
+            const fromStr = fromVal === undefined || fromVal === null ? null : String(fromVal);
+            const toStr = toVal === undefined || toVal === null ? null : String(toVal);
+            if (fromStr !== toStr) {
+                activityEvents.push({
+                    ranch_id: ranchId,
+                    animal_id: animal.get("id"),
+                    event_type: "animal_update",
+                    field,
+                    from_value: fromStr,
+                    to_value: toStr,
+                    notes: "Animal image updated",
+                    recorded_by: recorderId,
+                    created_at: new Date(),
+                });
+            }
+        };
+        pushIfChanged("image_url", previousImageUrl, uploadResult.secureUrl);
+        pushIfChanged("image_public_id", previousImagePublicId, uploadResult.publicId);
+        if (activityEvents.length > 0) {
+            await models_1.AnimalActivityEvent.bulkCreate(activityEvents);
+        }
+        return res.status(http_status_codes_1.StatusCodes.OK).json((0, apiResponse_1.successResponse)({
+            message: "Animal image uploaded successfully",
+            data: {
+                animal: {
+                    id: animal.get("id"),
+                    publicId: animal.get("public_id"),
+                    imageUrl: animal.get("image_url"),
+                    imagePublicId: animal.get("image_public_id"),
+                },
+            },
+        }));
+    }
+    catch (err) {
+        console.error("UPLOAD_ANIMAL_IMAGE_ERROR:", err);
+        return res.status(http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR).json((0, apiResponse_1.errorResponse)({
+            message: "Failed to upload animal image",
+            errors: err?.message ?? "Unknown error",
+        }));
+    }
+}
+async function removeAnimalImage(req, res) {
+    try {
+        const ranchId = req.ranch.id;
+        const { id } = req.params;
+        const requesterRole = req.membership.ranchRole;
+        const recorderId = req.user.id;
+        const canUpdate = requesterRole === roles_1.RANCH_ROLES.OWNER ||
+            requesterRole === roles_1.RANCH_ROLES.MANAGER ||
+            requesterRole === roles_1.RANCH_ROLES.VET;
+        if (!canUpdate) {
+            return res.status(http_status_codes_1.StatusCodes.FORBIDDEN).json((0, apiResponse_1.errorResponse)({
+                message: "Not allowed to remove animal image",
+            }));
+        }
+        const animal = await models_1.Animal.findOne({
+            where: { id, ranch_id: ranchId },
+        });
+        if (!animal) {
+            return res.status(http_status_codes_1.StatusCodes.NOT_FOUND).json((0, apiResponse_1.errorResponse)({
+                message: "Animal not found",
+            }));
+        }
+        const oldImageUrl = animal.get("image_url");
+        const oldImagePublicId = animal.get("image_public_id");
+        if (!oldImageUrl && !oldImagePublicId) {
+            return res.status(http_status_codes_1.StatusCodes.BAD_REQUEST).json((0, apiResponse_1.errorResponse)({
+                message: "Animal does not have an image",
+            }));
+        }
+        if (oldImagePublicId) {
+            await (0, cloudinary_service_1.deleteFromCloudinary)(oldImagePublicId);
+        }
+        await animal.update({
+            image_url: null,
+            image_public_id: null,
+        });
+        await models_1.AnimalActivityEvent.bulkCreate([
+            {
+                ranch_id: ranchId,
+                animal_id: animal.get("id"),
+                event_type: "animal_update",
+                field: "image_url",
+                from_value: oldImageUrl,
+                to_value: null,
+                notes: "Animal image removed",
+                recorded_by: recorderId,
+                created_at: new Date(),
+            },
+            {
+                ranch_id: ranchId,
+                animal_id: animal.get("id"),
+                event_type: "animal_update",
+                field: "image_public_id",
+                from_value: oldImagePublicId,
+                to_value: null,
+                notes: "Animal image removed",
+                recorded_by: recorderId,
+                created_at: new Date(),
+            },
+        ]);
+        return res.status(http_status_codes_1.StatusCodes.OK).json((0, apiResponse_1.successResponse)({
+            message: "Animal image removed successfully",
+            data: {
+                animal: {
+                    id: animal.get("id"),
+                    publicId: animal.get("public_id"),
+                    imageUrl: animal.get("image_url"),
+                    imagePublicId: animal.get("image_public_id"),
+                },
+            },
+        }));
+    }
+    catch (err) {
+        console.error("REMOVE_ANIMAL_IMAGE_ERROR:", err);
+        return res.status(http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR).json((0, apiResponse_1.errorResponse)({
+            message: "Failed to remove animal image",
+            errors: err?.message ?? "Unknown error",
+        }));
     }
 }

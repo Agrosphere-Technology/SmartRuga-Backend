@@ -15,6 +15,12 @@ function AnimalHealthEventFactory(sequelize) {
             type: sequelize_1.DataTypes.ENUM("healthy", "sick", "recovering", "quarantined"),
             allowNull: false,
         },
+        public_id: {
+            type: sequelize_1.DataTypes.UUID,
+            allowNull: false,
+            unique: true,
+            defaultValue: sequelize_1.DataTypes.UUIDV4,
+        },
         notes: { type: sequelize_1.DataTypes.TEXT, allowNull: true },
         recorded_by: { type: sequelize_1.DataTypes.UUID, allowNull: false },
     }, {
