@@ -215,3 +215,24 @@ export type SubmissionApprovalStatsRow = {
     approved: string;
     rejected: string;
 };
+
+export type ConcernStatsRow = {
+    total: string;
+    open: string;
+    in_review: string;
+    resolved: string;
+    dismissed: string;
+    urgent: string;
+    assigned_to_me: string;
+    raised_by_me: string;
+};
+
+export type RecentConcernRow = {
+    public_id: string;
+    title: string;
+    category: string;
+    priority: string;
+    status: string;
+    created_at: Date;
+    updated_at: Date;
+};
