@@ -21,8 +21,13 @@ export async function getRanchDashboard(req: Request, res: Response) {
     try {
         const ranchId = req.ranch!.id;
         const currentUserId = req.user!.id;
+        const platformRole = req.user!.platformRole;
         const ranchRole = req.membership?.ranchRole ?? null;
-        const canManage = ["owner", "manager"].includes(ranchRole ?? "");
+
+        const isSuperAdmin = platformRole === "super_admin";
+        const canManage = isSuperAdmin || ["owner", "manager"].includes(ranchRole ?? "");
+        const canViewLowStockList =
+            isSuperAdmin || canManage || ranchRole === "storekeeper";
 
         const parsedDueSoonDays = Number(req.query.dueSoonDays);
         const dueSoonDays =
@@ -721,6 +726,101 @@ export async function getRanchDashboard(req: Request, res: Response) {
                 }
             );
 
+        const memberStatsPromise = canManage
+            ? sequelize.query(
+                `
+                SELECT
+                    COUNT(*)::text AS total,
+                    COUNT(*) FILTER (WHERE rm.role = 'owner')::text AS owners,
+                    COUNT(*) FILTER (WHERE rm.role = 'manager')::text AS managers,
+                    COUNT(*) FILTER (WHERE rm.role = 'worker')::text AS workers,
+                    COUNT(*) FILTER (WHERE rm.role = 'vet')::text AS vets,
+                    COUNT(*) FILTER (WHERE rm.role = 'storekeeper')::text AS storekeepers
+                FROM ranch_members rm
+                WHERE rm.ranch_id = $1
+                `,
+                {
+                    bind: [ranchId],
+                    type: QueryTypes.SELECT,
+                }
+            )
+            : Promise.resolve([
+                {
+                    total: "0",
+                    owners: "0",
+                    managers: "0",
+                    workers: "0",
+                    vets: "0",
+                    storekeepers: "0",
+                },
+            ]);
+
+        const topWorkersPromise = canManage
+            ? sequelize.query(
+                `
+                SELECT
+                    u.id,
+                    u.first_name,
+                    u.last_name,
+                    COUNT(*) FILTER (
+                        WHERE t.status = 'completed' AND t.cancelled_at IS NULL
+                    )::text AS completed_tasks,
+                    COUNT(ts.id) FILTER (
+                        WHERE ts.status = 'approved'
+                    )::text AS approved_submissions
+                FROM users u
+                JOIN ranch_members rm ON rm.user_id = u.id
+                LEFT JOIN tasks t
+                    ON t.assigned_to_user_id = u.id
+                   AND t.ranch_id = $1
+                LEFT JOIN task_submissions ts
+                    ON ts.submitted_by_user_id = u.id
+                WHERE rm.ranch_id = $1
+                  AND rm.role = 'worker'
+                GROUP BY u.id, u.first_name, u.last_name
+                ORDER BY
+                    COUNT(*) FILTER (
+                        WHERE t.status = 'completed' AND t.cancelled_at IS NULL
+                    ) DESC,
+                    COUNT(ts.id) FILTER (
+                        WHERE ts.status = 'approved'
+                    ) DESC,
+                    u.first_name ASC
+                LIMIT 5
+                `,
+                {
+                    bind: [ranchId],
+                    type: QueryTypes.SELECT,
+                }
+            )
+            : Promise.resolve([]);
+
+        const lowStockItemsListPromise =
+            canManage || ranchRole === "storekeeper" || isSuperAdmin
+                ? sequelize.query(
+                    `
+                    SELECT
+                        i.public_id,
+                        i.name,
+                        i.quantity_on_hand,
+                        i.reorder_level,
+                        i.unit
+                    FROM inventory_items i
+                    WHERE i.ranch_id = $1
+                      AND i.is_active = true
+                      AND i.quantity_on_hand <= i.reorder_level
+                    ORDER BY
+                      i.quantity_on_hand ASC,
+                      i.name ASC
+                    LIMIT 10
+                    `,
+                    {
+                        bind: [ranchId],
+                        type: QueryTypes.SELECT,
+                    }
+                )
+                : Promise.resolve([]);
+
         const [
             animalStatsResult,
             taskStatsResult,
@@ -730,6 +830,9 @@ export async function getRanchDashboard(req: Request, res: Response) {
             recentAssignedConcerns,
             recentActivityRows,
             vaccinationRows,
+            memberStatsResult,
+            topWorkersResult,
+            lowStockItemsListResult,
         ] = await Promise.all([
             animalStatsPromise,
             taskStatsPromise,
@@ -739,6 +842,9 @@ export async function getRanchDashboard(req: Request, res: Response) {
             recentAssignedConcernsPromise,
             recentActivityPromise,
             vaccinationRowsPromise,
+            memberStatsPromise,
+            topWorkersPromise,
+            lowStockItemsListPromise,
         ]);
 
         const [animalStats] = animalStatsResult;
@@ -746,6 +852,7 @@ export async function getRanchDashboard(req: Request, res: Response) {
         const [submissionApprovalStats] = submissionApprovalStatsResult;
         const [inventoryStats] = inventoryStatsResult;
         const [concernStats] = concernStatsResult;
+        const [memberStats] = memberStatsResult as any[];
 
         let overdue = 0;
         let dueToday = 0;
@@ -770,6 +877,7 @@ export async function getRanchDashboard(req: Request, res: Response) {
             successResponse({
                 message: "Ranch dashboard fetched successfully",
                 data: {
+                    platformRole,
                     role: ranchRole,
                     animals: {
                         total: Number(animalStats?.total ?? 0),
@@ -824,11 +932,38 @@ export async function getRanchDashboard(req: Request, res: Response) {
                         createdAt: concern.created_at,
                         updatedAt: concern.updated_at,
                     })),
+                    ...((canManage || isSuperAdmin) && {
+                        members: {
+                            total: Number(memberStats?.total ?? 0),
+                            owners: Number(memberStats?.owners ?? 0),
+                            managers: Number(memberStats?.managers ?? 0),
+                            workers: Number(memberStats?.workers ?? 0),
+                            vets: Number(memberStats?.vets ?? 0),
+                            storekeepers: Number(memberStats?.storekeepers ?? 0),
+                        },
+                        topPerformers: (topWorkersResult as any[]).map((worker) => ({
+                            id: worker.id,
+                            firstName: worker.first_name,
+                            lastName: worker.last_name,
+                            completedTasks: Number(worker.completed_tasks ?? 0),
+                            approvedSubmissions: Number(worker.approved_submissions ?? 0),
+                        })),
+                    }),
+                    ...((canManage || ranchRole === "storekeeper" || isSuperAdmin) && {
+                        lowStockItemsList: (lowStockItemsListResult as any[]).map((item) => ({
+                            publicId: item.public_id,
+                            name: item.name,
+                            quantityOnHand: Number(item.quantity_on_hand ?? 0),
+                            reorderLevel: Number(item.reorder_level ?? 0),
+                            unit: item.unit,
+                        })),
+                    }),
                     recentActivity,
                 },
                 meta: {
                     dueSoonDays,
                     canManage,
+                    isSuperAdmin,
                 },
             })
         );

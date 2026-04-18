@@ -29,10 +29,12 @@ export const sequelize = new Sequelize(process.env.DATABASE_URL!, {
   dialectOptions: {
     ssl: { require: true, rejectUnauthorized: false },
   },
-  pool: { max: 5, min: 0, acquire: 30_000, idle: 10_000 },
+  pool: { max: 5, min: 0, acquire: 30000, idle: 10000 },
 });
 
-// Models
+// ===============================
+// MODELS
+// ===============================
 export const User = UserFactory(sequelize);
 export const Ranch = RanchFactory(sequelize);
 export const RanchMember = RanchMemberFactory(sequelize);
@@ -52,45 +54,61 @@ export const InventoryItem = InventoryItemFactory(sequelize);
 export const InventoryStockMovement = InventoryStockMovementFactory(sequelize);
 export const Concern = ConcernFactory(sequelize);
 
-Task.belongsTo(User, { foreignKey: "assigned_by_user_id", as: "assigner" });
-
-TaskSubmission.belongsTo(User, { foreignKey: "reviewed_by_user_id", as: "reviewer" });
-
-// User ↔ Ranch
+// ===============================
+// USER ↔ RANCH
+// ===============================
 User.hasMany(Ranch, { foreignKey: "created_by", as: "createdRanches" });
 Ranch.belongsTo(User, { foreignKey: "created_by", as: "creator" });
 
-// Ranch ↔ RanchMember
+// ===============================
+// RANCH ↔ MEMBERS
+// ===============================
 Ranch.hasMany(RanchMember, { foreignKey: "ranch_id", as: "members" });
-RanchMember.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 
-User.hasMany(RanchMember, { foreignKey: "user_id", as: "memberships" });
-RanchMember.belongsTo(User, { foreignKey: "user_id" });
+RanchMember.belongsTo(Ranch, {
+  foreignKey: "ranch_id",
+  as: "ranch",
+});
 
-// Ranch ↔ Invite
+User.hasMany(RanchMember, {
+  foreignKey: "user_id",
+  as: "memberships",
+});
+
+RanchMember.belongsTo(User, {
+  foreignKey: "user_id",
+  as: "user",
+});
+
+// ===============================
+// INVITES
+// ===============================
 Ranch.hasMany(Invite, { foreignKey: "ranch_id", as: "invites" });
 Invite.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 
 User.hasMany(Invite, { foreignKey: "created_by", as: "createdInvites" });
 Invite.belongsTo(User, { foreignKey: "created_by", as: "creator" });
 
-// User ↔ RefreshToken
+// ===============================
+// REFRESH TOKENS
+// ===============================
 User.hasMany(RefreshToken, { foreignKey: "user_id", as: "refreshTokens" });
-RefreshToken.belongsTo(User, { foreignKey: "user_id" });
+RefreshToken.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
-// Ranch ↔ Animal
+// ===============================
+// ANIMALS
+// ===============================
 Ranch.hasMany(Animal, { foreignKey: "ranch_id", as: "animals" });
 Animal.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 
-// Species ↔ Animal
 Species.hasMany(Animal, { foreignKey: "species_id", as: "animals" });
 Animal.belongsTo(Species, { foreignKey: "species_id", as: "species" });
 
-// Ranch ↔ RanchLocation
+// ===============================
+// LOCATIONS
+// ===============================
 Ranch.hasMany(RanchLocation, { foreignKey: "ranch_id", as: "locations" });
 RanchLocation.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
-
-// RanchLocation ↔ Animal (current location)
 
 RanchLocation.hasMany(Animal, {
   foreignKey: "current_location_id",
@@ -102,8 +120,9 @@ Animal.belongsTo(RanchLocation, {
   as: "currentLocation",
 });
 
-// Animal ↔ AnimalHealthEvent
-
+// ===============================
+// HEALTH EVENTS
+// ===============================
 Animal.hasMany(AnimalHealthEvent, {
   foreignKey: "animal_id",
   as: "healthEvents",
@@ -114,8 +133,9 @@ AnimalHealthEvent.belongsTo(Animal, {
   as: "animal",
 });
 
-// Animal ↔ AnimalActivityEvent
-
+// ===============================
+// ACTIVITY EVENTS
+// ===============================
 Animal.hasMany(AnimalActivityEvent, {
   foreignKey: "animal_id",
   as: "activityEvents",
@@ -125,8 +145,6 @@ AnimalActivityEvent.belongsTo(Animal, {
   foreignKey: "animal_id",
   as: "animal",
 });
-
-// User ↔ AnimalActivityEvent
 
 User.hasMany(AnimalActivityEvent, {
   foreignKey: "recorded_by",
@@ -138,40 +156,27 @@ AnimalActivityEvent.belongsTo(User, {
   as: "recorder",
 });
 
-// Ranch ↔ RanchAlert
-
+// ===============================
+// ALERTS
+// ===============================
 Ranch.hasMany(RanchAlert, { foreignKey: "ranch_id", as: "alerts" });
 RanchAlert.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 
-// Animal ↔ Vaccination
+Animal.hasMany(RanchAlert, { foreignKey: "animal_id", as: "alerts" });
+RanchAlert.belongsTo(Animal, { foreignKey: "animal_id", as: "animal" });
 
+User.hasMany(RanchAlert, { foreignKey: "read_by", as: "readAlerts" });
+RanchAlert.belongsTo(User, { foreignKey: "read_by", as: "readByUser" });
+
+// ===============================
+// VACCINATIONS
+// ===============================
 Animal.hasMany(Vaccination, { foreignKey: "animal_id", as: "vaccinations" });
 Vaccination.belongsTo(Animal, { foreignKey: "animal_id", as: "animal" });
 
-
-RanchAlert.belongsTo(Animal, {
-  foreignKey: "animal_id",
-  as: "animal",
-});
-
-RanchAlert.belongsTo(User, {
-  foreignKey: "read_by",
-  as: "readByUser",
-});
-
-
-Animal.hasMany(RanchAlert, {
-  foreignKey: "animal_id",
-  as: "alerts",
-});
-
-User.hasMany(RanchAlert, {
-  foreignKey: "read_by",
-  as: "readAlerts",
-});
-
-// Animal ↔ AnimalMovementEvent
-
+// ===============================
+// MOVEMENT EVENTS
+// ===============================
 Animal.hasMany(AnimalMovementEvent, {
   foreignKey: "animal_id",
   as: "movementEvents",
@@ -181,8 +186,6 @@ AnimalMovementEvent.belongsTo(Animal, {
   foreignKey: "animal_id",
   as: "animal",
 });
-
-// User ↔ AnimalMovementEvent
 
 User.hasMany(AnimalMovementEvent, {
   foreignKey: "recorded_by",
@@ -194,8 +197,6 @@ AnimalMovementEvent.belongsTo(User, {
   as: "recorder",
 });
 
-// Ranch ↔ AnimalMovementEvent
-
 Ranch.hasMany(AnimalMovementEvent, {
   foreignKey: "ranch_id",
   as: "movementEvents",
@@ -205,8 +206,6 @@ AnimalMovementEvent.belongsTo(Ranch, {
   foreignKey: "ranch_id",
   as: "ranch",
 });
-
-// RanchLocation ↔ AnimalMovementEvent (from location)
 
 RanchLocation.hasMany(AnimalMovementEvent, {
   foreignKey: "from_location_id",
@@ -218,8 +217,6 @@ AnimalMovementEvent.belongsTo(RanchLocation, {
   as: "fromLocation",
 });
 
-// RanchLocation ↔ AnimalMovementEvent (to location)
-
 RanchLocation.hasMany(AnimalMovementEvent, {
   foreignKey: "to_location_id",
   as: "incomingMovements",
@@ -230,91 +227,87 @@ AnimalMovementEvent.belongsTo(RanchLocation, {
   as: "toLocation",
 });
 
-// Task ↔ Ranch
-
+// ===============================
+// TASKS
+// ===============================
 Task.belongsTo(Ranch, { foreignKey: "ranch_id", as: "ranch" });
 
-// Task ↔ User
-Task.belongsTo(User, { foreignKey: "assigned_to_user_id", as: "assignedToUser" });
-Task.belongsTo(User, { foreignKey: "assigned_by_user_id", as: "assignedByUser" });
+Task.belongsTo(User, {
+  foreignKey: "assigned_to_user_id",
+  as: "assignedToUser",
+});
+
+Task.belongsTo(User, {
+  foreignKey: "assigned_by_user_id",
+  as: "assignedByUser",
+});
+
 Task.belongsTo(User, {
   foreignKey: "cancelled_by_user_id",
   as: "cancelledByUser",
 });
 
-Task.hasMany(TaskSubmission, { foreignKey: "task_id", as: "submissions" });
+Task.hasMany(TaskSubmission, {
+  foreignKey: "task_id",
+  as: "submissions",
+});
 
-// TaskSubmission ↔ Task
-TaskSubmission.belongsTo(Task, { foreignKey: "task_id", as: "task" });
+TaskSubmission.belongsTo(Task, {
+  foreignKey: "task_id",
+  as: "task",
+});
 
-// TaskSubmission ↔ User
-TaskSubmission.belongsTo(User, { foreignKey: "submitted_by_user_id", as: "submittedByUser" });
-TaskSubmission.belongsTo(User, { foreignKey: "reviewed_by_user_id", as: "reviewedByUser" });
+TaskSubmission.belongsTo(User, {
+  foreignKey: "submitted_by_user_id",
+  as: "submittedByUser",
+});
 
+TaskSubmission.belongsTo(User, {
+  foreignKey: "reviewed_by_user_id",
+  as: "reviewedByUser",
+});
 
-/**
- * ===============================
- * InventoryItem Associations
- * ===============================
- */
-
-// Each inventory item belongs to a ranch
-// (multi-tenancy: items are scoped per ranch)
+// ===============================
+// INVENTORY
+// ===============================
 InventoryItem.belongsTo(Ranch, {
   foreignKey: "ranch_id",
   as: "ranch",
 });
 
-// Track who created the inventory item
 InventoryItem.belongsTo(User, {
   foreignKey: "created_by_user_id",
   as: "createdByUser",
 });
 
-// Track who last updated the inventory item
 InventoryItem.belongsTo(User, {
   foreignKey: "updated_by_user_id",
   as: "updatedByUser",
 });
 
-// One inventory item can have many stock movements
-// (audit trail of all stock changes)
 InventoryItem.hasMany(InventoryStockMovement, {
   foreignKey: "inventory_item_id",
   as: "stockMovements",
 });
 
-
-/**
- * ===============================
- * InventoryStockMovement Associations
- * ===============================
- */
-
-// Each stock movement belongs to an inventory item
-// (e.g., stock_in, stock_out, adjustment)
 InventoryStockMovement.belongsTo(InventoryItem, {
   foreignKey: "inventory_item_id",
   as: "inventoryItem",
 });
 
-// Track which user recorded the stock movement
-// (important for accountability and audit logs)
 InventoryStockMovement.belongsTo(User, {
   foreignKey: "recorded_by_user_id",
   as: "recordedByUser",
 });
 
-// Each movement is also scoped to a ranch
-// (ensures proper multi-tenant isolation)
 InventoryStockMovement.belongsTo(Ranch, {
   foreignKey: "ranch_id",
   as: "ranch",
 });
 
-/////// Concern <=> Association  /////////
-
-// Concern associations
+// ===============================
+// CONCERNS
+// ===============================
 Concern.belongsTo(User, {
   foreignKey: "raised_by_user_id",
   as: "raisedByUser",

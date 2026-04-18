@@ -22,7 +22,7 @@ const router = Router();
  *   get:
  *     tags: [Ranch Members]
  *     summary: List all members in a ranch
- *     description: Returns all users in a ranch with their ranch roles and basic user details
+ *     description: Returns all users in a ranch with their ranch roles and user details
  *     parameters:
  *       - in: path
  *         name: slug
@@ -51,7 +51,7 @@ router.get(
  *   patch:
  *     tags: [Ranch Members]
  *     summary: Update ranch member role
- *     description: Allows owner or manager to change a member's ranch role (except owner)
+ *     description: Only owner or manager can change roles. Owner role cannot be modified or assigned.
  *     parameters:
  *       - in: path
  *         name: slug
@@ -75,7 +75,7 @@ router.get(
  *             properties:
  *               ranchRole:
  *                 type: string
- *                 enum: [owner, manager, worker, vet, storekeeper]
+ *                 enum: [manager, worker, vet, storekeeper]
  *     responses:
  *       200:
  *         description: Role updated successfully
@@ -98,8 +98,8 @@ router.patch(
  * /api/v1/ranches/{slug}/members/{memberId}:
  *   delete:
  *     tags: [Ranch Members]
- *     summary: Remove a member from ranch or leave ranch
- *     description: Allows owner/manager to remove a member. Also allows a user to leave the ranch (self-removal except owner)
+ *     summary: Remove member or leave ranch
+ *     description: Owner/manager can remove members. Users can also leave a ranch themselves (except owner).
  *     parameters:
  *       - in: path
  *         name: slug

@@ -8,6 +8,9 @@ function getSingleParam(param: string | string[] | undefined) {
     return Array.isArray(param) ? param[0] : param;
 }
 
+// ===============================
+// LIST MEMBERS
+// ===============================
 export async function listRanchMembers(req: Request, res: Response) {
     try {
         const ranchId = req.ranch!.id;
@@ -31,30 +34,32 @@ export async function listRanchMembers(req: Request, res: Response) {
                 },
             ],
             order: [["created_at", "DESC"]],
-        } as any);
+        });
+
+        const formatted = members.map((m: any) => ({
+            memberId: m.get("id"),
+            ranchRole: m.get("role"),
+            status: m.get("status"),
+            createdAt: m.get("created_at"),
+
+            user: m.user
+                ? {
+                    id: m.user.get("id"),
+                    firstName: m.user.get("first_name"),
+                    lastName: m.user.get("last_name"),
+                    email: m.user.get("email"),
+                    phone: m.user.get("phone"),
+                    imageUrl: m.user.get("image_url"),
+                    platformRole: m.user.get("platform_role"),
+                    isActive: m.user.get("is_active"),
+                }
+                : null,
+        }));
 
         return res.status(StatusCodes.OK).json(
             successResponse({
                 message: "Ranch members fetched successfully",
-                data: {
-                    members: members.map((m: any) => ({
-                        memberId: m.get("id"),
-                        ranchRole: m.get("role"),
-                        status: m.get("status"),
-                        createdAt: m.get("created_at"),
-
-                        user: {
-                            id: m.user?.get("id"),
-                            firstName: m.user?.get("first_name"),
-                            lastName: m.user?.get("last_name"),
-                            email: m.user?.get("email"),
-                            phone: m.user?.get("phone"),
-                            imageUrl: m.user?.get("image_url"),
-                            platformRole: m.user?.get("platform_role"),
-                            isActive: m.user?.get("is_active"),
-                        },
-                    })),
-                },
+                data: { members: formatted },
             })
         );
     } catch (err: any) {
@@ -68,12 +73,13 @@ export async function listRanchMembers(req: Request, res: Response) {
     }
 }
 
+// ===============================
+// UPDATE ROLE
+// ===============================
 export async function updateRanchMemberRole(req: Request, res: Response) {
     try {
         const ranchId = req.ranch!.id;
-        const requesterMembership = req.membership!;
-
-        const requesterRole = requesterMembership.ranchRole;
+        const requesterRole = req.membership!.ranchRole;
 
         const memberId = getSingleParam(req.params.memberId);
         const { ranchRole } = req.body;
@@ -87,10 +93,7 @@ export async function updateRanchMemberRole(req: Request, res: Response) {
         }
 
         const member = await RanchMember.findOne({
-            where: {
-                id: memberId,
-                ranch_id: ranchId,
-            },
+            where: { id: memberId, ranch_id: ranchId },
         });
 
         if (!member) {
@@ -101,7 +104,7 @@ export async function updateRanchMemberRole(req: Request, res: Response) {
 
         const currentRole = member.get("role");
 
-        // 🔒 Only owner & manager can change roles
+        // 🔒 Only owner & manager
         if (!["owner", "manager"].includes(requesterRole)) {
             return res.status(StatusCodes.FORBIDDEN).json(
                 errorResponse({
@@ -110,7 +113,7 @@ export async function updateRanchMemberRole(req: Request, res: Response) {
             );
         }
 
-        // ❌ Nobody can change owner
+        // ❌ Cannot change owner
         if (currentRole === "owner") {
             return res.status(StatusCodes.FORBIDDEN).json(
                 errorResponse({
@@ -128,7 +131,7 @@ export async function updateRanchMemberRole(req: Request, res: Response) {
             );
         }
 
-        // ❌ Manager cannot modify another manager
+        // ❌ Manager cannot change another manager
         if (requesterRole === "manager" && currentRole === "manager") {
             return res.status(StatusCodes.FORBIDDEN).json(
                 errorResponse({
@@ -159,16 +162,16 @@ export async function updateRanchMemberRole(req: Request, res: Response) {
     }
 }
 
-
+// ===============================
+// REMOVE MEMBER / LEAVE
+// ===============================
 export async function removeRanchMember(req: Request, res: Response) {
     try {
         const ranchId = req.ranch!.id;
-        const requester = req.membership!;
-        const requesterRole = requester.ranchRole;
+        const requesterRole = req.membership!.ranchRole;
+        const currentUserId = req.user!.id;
 
-        const memberId = Array.isArray(req.params.memberId)
-            ? req.params.memberId[0]
-            : req.params.memberId;
+        const memberId = getSingleParam(req.params.memberId);
 
         if (!memberId) {
             return res.status(StatusCodes.BAD_REQUEST).json(
@@ -177,10 +180,7 @@ export async function removeRanchMember(req: Request, res: Response) {
         }
 
         const member = await RanchMember.findOne({
-            where: {
-                id: memberId,
-                ranch_id: ranchId,
-            },
+            where: { id: memberId, ranch_id: ranchId },
         });
 
         if (!member) {
@@ -190,10 +190,12 @@ export async function removeRanchMember(req: Request, res: Response) {
         }
 
         const targetRole = member.get("role");
-        const currentUserId = req.user!.id;
+        const targetUserId = member.get("user_id");
 
-        // ✅ HANDLE SELF-REMOVAL FIRST
-        if (member.get("user_id") === currentUserId) {
+        // ===============================
+        // SELF LEAVE
+        // ===============================
+        if (targetUserId === currentUserId) {
             if (targetRole === "owner") {
                 return res.status(StatusCodes.FORBIDDEN).json(
                     errorResponse({ message: "Owner cannot leave the ranch" })
@@ -209,7 +211,9 @@ export async function removeRanchMember(req: Request, res: Response) {
             );
         }
 
-        // 🔒 Only owner or manager can remove others
+        // ===============================
+        // REMOVE OTHERS
+        // ===============================
         if (!["owner", "manager"].includes(requesterRole)) {
             return res.status(StatusCodes.FORBIDDEN).json(
                 errorResponse({
@@ -218,7 +222,6 @@ export async function removeRanchMember(req: Request, res: Response) {
             );
         }
 
-        // ❌ Nobody can remove owner
         if (targetRole === "owner") {
             return res.status(StatusCodes.FORBIDDEN).json(
                 errorResponse({
@@ -227,7 +230,6 @@ export async function removeRanchMember(req: Request, res: Response) {
             );
         }
 
-        // ❌ Manager cannot remove another manager
         if (requesterRole === "manager" && targetRole === "manager") {
             return res.status(StatusCodes.FORBIDDEN).json(
                 errorResponse({

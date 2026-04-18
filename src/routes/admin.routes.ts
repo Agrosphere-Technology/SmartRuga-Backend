@@ -1,10 +1,17 @@
-// Documentation for Admin Routes
-
 /**
  * @openapi
  * tags:
  *   - name: Admin
  *     description: Platform administration endpoints
+ *
+ * /api/v1/admin/dashboard:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Get super admin platform dashboard
+ *     responses:
+ *       200: { description: OK }
+ *       401: { description: Unauthorized }
+ *       403: { description: Forbidden }
  *
  * /api/v1/admin/users:
  *   get:
@@ -86,12 +93,19 @@ import { requireAuth } from "../middlewares/auth";
 import {
   deactivateUser,
   deleteUser,
+  getPlatformDashboard,
   getUserByIdForAdmin,
   listAllUsers,
   updateUserPlatformRole,
 } from "../controllers/admin.controller";
 
 const router = Router();
+
+router.get(
+  "/dashboard",
+  requireAuth(["super_admin"]),
+  getPlatformDashboard
+);
 
 router.get(
   "/users",

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
-import { User, RanchMember, Ranch } from "../models";
+import { QueryTypes } from "sequelize";
+import { User, RanchMember, Ranch, sequelize } from "../models";
 import { PLATFORM_ROLES } from "../constants/roles";
 import { updateRoleSchema } from "../validators/auth.validator";
 import { errorResponse, successResponse } from "../utils/apiResponse";
@@ -35,6 +36,149 @@ function formatUserForAdmin(user: any, memberships: any[] = []) {
       updatedAt: membership.get("updated_at"),
     })),
   };
+}
+
+export async function getPlatformDashboard(req: Request, res: Response) {
+  try {
+    const requester = req.user!;
+    const requesterRole = requester.platformRole;
+
+    if (requesterRole !== PLATFORM_ROLES.SUPER_ADMIN) {
+      return res.status(StatusCodes.FORBIDDEN).json(
+        errorResponse({
+          message: "Only super_admin can view platform dashboard",
+        })
+      );
+    }
+
+    const statsPromise = sequelize.query(
+      `
+      SELECT
+        (SELECT COUNT(*)::text FROM users) AS total_users,
+        (SELECT COUNT(*)::text FROM users WHERE is_active = true) AS active_users,
+        (SELECT COUNT(*)::text FROM users WHERE deleted_at IS NOT NULL) AS deleted_users,
+        (SELECT COUNT(*)::text FROM ranches) AS total_ranches,
+        (SELECT COUNT(*)::text FROM ranch_members) AS total_memberships,
+        (SELECT COUNT(*)::text FROM ranch_members WHERE status = 'active') AS active_memberships,
+        (SELECT COUNT(*)::text FROM animals) AS total_animals,
+        (SELECT COUNT(*)::text FROM concerns WHERE status IN ('open', 'in_review')) AS open_concerns,
+        (
+          SELECT COUNT(*)::text
+          FROM inventory_items
+          WHERE is_active = true
+            AND quantity_on_hand <= reorder_level
+        ) AS low_stock_items,
+        (
+          SELECT COUNT(*)::text
+          FROM animal_vaccinations
+          WHERE deleted_at IS NULL
+            AND next_due_at IS NOT NULL
+            AND next_due_at < NOW()
+        ) AS overdue_vaccinations
+      `,
+      {
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    const recentUsersPromise = User.findAll({
+      order: [["created_at", "DESC"]],
+      limit: 5,
+    });
+
+    const recentRanchesPromise = Ranch.findAll({
+      order: [["created_at", "DESC"]],
+      limit: 5,
+    });
+
+    const ranchHealthPromise = sequelize.query(
+      `
+      SELECT
+        r.id,
+        r.name,
+        r.slug,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.status IN ('open', 'in_review'))::text AS open_concerns,
+        COUNT(DISTINCT i.id) FILTER (
+          WHERE i.is_active = true AND i.quantity_on_hand <= i.reorder_level
+        )::text AS low_stock_items,
+        COUNT(DISTINCT a.id)::text AS total_animals
+      FROM ranches r
+      LEFT JOIN concerns c ON c.ranch_id = r.id
+      LEFT JOIN inventory_items i ON i.ranch_id = r.id
+      LEFT JOIN animals a ON a.ranch_id = r.id
+      GROUP BY r.id, r.name, r.slug
+      ORDER BY r.created_at DESC
+      LIMIT 10
+      `,
+      {
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    const [statsRows, recentUsers, recentRanches, ranchHealthRows] =
+      await Promise.all([
+        statsPromise,
+        recentUsersPromise,
+        recentRanchesPromise,
+        ranchHealthPromise,
+      ]);
+
+    const stats = (statsRows as any[])[0] ?? {};
+
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Platform dashboard fetched successfully",
+        data: {
+          overview: {
+            totalUsers: Number(stats.total_users ?? 0),
+            activeUsers: Number(stats.active_users ?? 0),
+            deletedUsers: Number(stats.deleted_users ?? 0),
+            totalRanches: Number(stats.total_ranches ?? 0),
+            totalMemberships: Number(stats.total_memberships ?? 0),
+            activeMemberships: Number(stats.active_memberships ?? 0),
+            totalAnimals: Number(stats.total_animals ?? 0),
+            openConcerns: Number(stats.open_concerns ?? 0),
+            lowStockItems: Number(stats.low_stock_items ?? 0),
+            overdueVaccinations: Number(stats.overdue_vaccinations ?? 0),
+          },
+          recentUsers: recentUsers.map((user: any) => ({
+            id: user.get("id"),
+            firstName: user.get("first_name"),
+            lastName: user.get("last_name"),
+            email: user.get("email"),
+            platformRole: user.get("platform_role"),
+            isActive: user.get("is_active"),
+            createdAt: user.get("created_at"),
+          })),
+          recentRanches: recentRanches.map((ranch: any) => ({
+            id: ranch.get("id"),
+            name: ranch.get("name"),
+            slug: ranch.get("slug"),
+            createdAt: ranch.get("created_at"),
+          })),
+          ranchHealth: (ranchHealthRows as any[]).map((row) => ({
+            id: row.id,
+            name: row.name,
+            slug: row.slug,
+            totalAnimals: Number(row.total_animals ?? 0),
+            openConcerns: Number(row.open_concerns ?? 0),
+            lowStockItems: Number(row.low_stock_items ?? 0),
+          })),
+          quickLinks: {
+            users: "/api/v1/admin/users",
+          },
+        },
+      })
+    );
+  } catch (err: any) {
+    console.error("GET_PLATFORM_DASHBOARD_ERROR:", err);
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to fetch platform dashboard",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
+  }
 }
 
 export async function listAllUsers(req: Request, res: Response) {
