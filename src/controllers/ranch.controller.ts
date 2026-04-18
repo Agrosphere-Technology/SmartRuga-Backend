@@ -81,6 +81,28 @@ export async function createRanch(req: Request, res: Response) {
 export async function listAllRanches(req: Request, res: Response) {
   try {
     const userId = req.user!.id;
+    const platformRole = req.user!.platformRole;
+
+    if (platformRole === "super_admin") {
+      const ranches = await Ranch.findAll({
+        order: [["created_at", "DESC"]],
+      });
+
+      return res.status(StatusCodes.OK).json(
+        successResponse({
+          message: "Ranches fetched successfully",
+          data: {
+            ranches: ranches.map((ranch: any) => ({
+              id: ranch.id,
+              name: ranch.name,
+              slug: ranch.slug,
+              role: "super_admin",
+              status: "active",
+            })),
+          },
+        })
+      );
+    }
 
     const memberships = await RanchMember.findAll({
       where: { user_id: userId },

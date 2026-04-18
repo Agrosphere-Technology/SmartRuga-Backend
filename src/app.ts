@@ -25,6 +25,8 @@ import ranchTaskRoutes from "./routes/task.routes";
 import ranchTaskSubmissionRoutes from "./routes/task-submission.routes";
 import ranchInventoryRoutes from "./routes/inventory.routes";
 import concernRoutes from "./routes/concern.routes";
+import ranchMemberRoutes from "./routes/ranch-member.routes";
+
 import qrRoutes from "./routes/qr.routes";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./docs/swagger";
@@ -70,6 +72,8 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/ranches", ranchRoutes);
 app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/ranches", ranchMemberRoutes);
+
 app.use("/api/v1/invites", inviteRoutes);
 app.use("/api/v1/ranches", ranchInviteRoutes);
 app.use("/api/v1/ranches", vaccinationRoutes);
