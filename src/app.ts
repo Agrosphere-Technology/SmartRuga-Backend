@@ -26,6 +26,7 @@ import ranchTaskSubmissionRoutes from "./routes/task-submission.routes";
 import ranchInventoryRoutes from "./routes/inventory.routes";
 import concernRoutes from "./routes/concern.routes";
 import ranchMemberRoutes from "./routes/ranch-member.routes";
+import platformTicketRoutes from "./routes/platform-ticket.routes";
 
 import qrRoutes from "./routes/qr.routes";
 import swaggerUi from "swagger-ui-express";
@@ -89,6 +90,7 @@ app.use("/api/v1/ranches", ranchTaskRoutes);
 app.use("/api/v1/ranches", ranchTaskSubmissionRoutes);
 app.use("/api/v1/ranches", ranchInventoryRoutes);
 app.use("/api/v1/ranches", concernRoutes);
+app.use("/api/v1", platformTicketRoutes);
 app.use("/api/v1", speciesRoutes);
 app.use(qrRoutes);
 

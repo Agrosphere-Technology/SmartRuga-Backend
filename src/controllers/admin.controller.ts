@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { QueryTypes } from "sequelize";
-import { User, RanchMember, Ranch, sequelize } from "../models";
+import { User, RanchMember, Ranch, PlatformTicket, sequelize } from "../models";
 import { PLATFORM_ROLES } from "../constants/roles";
 import { updateRoleSchema } from "../validators/auth.validator";
+import { listPlatformTicketsQuerySchema } from "../validators/platform-ticket.validator";
 import { errorResponse, successResponse } from "../utils/apiResponse";
 
 function getSingleParam(param: string | string[] | undefined) {
@@ -35,6 +36,45 @@ function formatUserForAdmin(user: any, memberships: any[] = []) {
       createdAt: membership.get("created_at"),
       updatedAt: membership.get("updated_at"),
     })),
+  };
+}
+
+function formatPlatformTicketForAdmin(ticket: any) {
+  return {
+    id: ticket.get("id"),
+    publicId: ticket.get("public_id"),
+    title: ticket.get("title"),
+    description: ticket.get("description"),
+    category: ticket.get("category"),
+    priority: ticket.get("priority"),
+    status: ticket.get("status"),
+    resolvedAt: ticket.get("resolved_at"),
+    closedAt: ticket.get("closed_at"),
+    createdAt: ticket.get("created_at"),
+    updatedAt: ticket.get("updated_at"),
+    ranch: ticket.ranch
+      ? {
+        id: ticket.ranch.get("id"),
+        name: ticket.ranch.get("name"),
+        slug: ticket.ranch.get("slug"),
+      }
+      : null,
+    raisedByUser: ticket.raisedByUser
+      ? {
+        id: ticket.raisedByUser.get("id"),
+        firstName: ticket.raisedByUser.get("first_name"),
+        lastName: ticket.raisedByUser.get("last_name"),
+        email: ticket.raisedByUser.get("email"),
+      }
+      : null,
+    assignedToUser: ticket.assignedToUser
+      ? {
+        id: ticket.assignedToUser.get("id"),
+        firstName: ticket.assignedToUser.get("first_name"),
+        lastName: ticket.assignedToUser.get("last_name"),
+        email: ticket.assignedToUser.get("email"),
+      }
+      : null,
   };
 }
 
@@ -166,6 +206,7 @@ export async function getPlatformDashboard(req: Request, res: Response) {
           })),
           quickLinks: {
             users: "/api/v1/admin/users",
+            platformTickets: "/api/v1/admin/platform-tickets",
           },
         },
       })
@@ -544,6 +585,153 @@ export async function deleteUser(req: Request, res: Response) {
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
       errorResponse({
         message: "Failed to delete user",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
+  }
+}
+
+export async function listAllPlatformTickets(req: Request, res: Response) {
+  try {
+    const requester = req.user!;
+    const requesterRole = requester.platformRole;
+
+    if (requesterRole !== PLATFORM_ROLES.SUPER_ADMIN) {
+      return res.status(StatusCodes.FORBIDDEN).json(
+        errorResponse({
+          message: "Only super_admin can view all platform tickets",
+        })
+      );
+    }
+
+    const parsed = listPlatformTicketsQuerySchema.safeParse(req.query);
+
+    if (!parsed.success) {
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Invalid platform ticket filters",
+          errors: parsed.error.issues,
+        })
+      );
+    }
+
+    const whereClause: any = {};
+
+    if (parsed.data.status) whereClause.status = parsed.data.status;
+    if (parsed.data.category) whereClause.category = parsed.data.category;
+    if (parsed.data.priority) whereClause.priority = parsed.data.priority;
+
+    const tickets = await PlatformTicket.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: Ranch,
+          as: "ranch",
+          attributes: ["id", "name", "slug"],
+        },
+        {
+          model: User,
+          as: "raisedByUser",
+          attributes: ["id", "first_name", "last_name", "email"],
+        },
+        {
+          model: User,
+          as: "assignedToUser",
+          attributes: ["id", "first_name", "last_name", "email"],
+        },
+      ],
+      order: [["created_at", "DESC"]],
+    } as any);
+
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Platform tickets fetched successfully",
+        data: {
+          tickets: (tickets as any[]).map((ticket) =>
+            formatPlatformTicketForAdmin(ticket)
+          ),
+        },
+      })
+    );
+  } catch (err: any) {
+    console.error("LIST_ALL_PLATFORM_TICKETS_ERROR:", err);
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to fetch platform tickets",
+        errors: err?.message ?? "Unknown error",
+      })
+    );
+  }
+}
+
+export async function getPlatformTicketByPublicIdForAdmin(
+  req: Request,
+  res: Response
+) {
+  try {
+    const requester = req.user!;
+    const requesterRole = requester.platformRole;
+
+    if (requesterRole !== PLATFORM_ROLES.SUPER_ADMIN) {
+      return res.status(StatusCodes.FORBIDDEN).json(
+        errorResponse({
+          message: "Only super_admin can view platform ticket details",
+        })
+      );
+    }
+
+    const publicId = getSingleParam(req.params.publicId);
+
+    if (!publicId) {
+      return res.status(StatusCodes.BAD_REQUEST).json(
+        errorResponse({
+          message: "Ticket publicId is required",
+        })
+      );
+    }
+
+    const ticket = await PlatformTicket.findOne({
+      where: { public_id: publicId },
+      include: [
+        {
+          model: Ranch,
+          as: "ranch",
+          attributes: ["id", "name", "slug"],
+        },
+        {
+          model: User,
+          as: "raisedByUser",
+          attributes: ["id", "first_name", "last_name", "email"],
+        },
+        {
+          model: User,
+          as: "assignedToUser",
+          attributes: ["id", "first_name", "last_name", "email"],
+        },
+      ],
+    } as any);
+
+    if (!ticket) {
+      return res.status(StatusCodes.NOT_FOUND).json(
+        errorResponse({
+          message: "Platform ticket not found",
+        })
+      );
+    }
+
+    return res.status(StatusCodes.OK).json(
+      successResponse({
+        message: "Platform ticket fetched successfully",
+        data: {
+          ticket: formatPlatformTicketForAdmin(ticket as any),
+        },
+      })
+    );
+  } catch (err: any) {
+    console.error("GET_PLATFORM_TICKET_FOR_ADMIN_ERROR:", err);
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(
+      errorResponse({
+        message: "Failed to fetch platform ticket",
         errors: err?.message ?? "Unknown error",
       })
     );

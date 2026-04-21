@@ -86,6 +86,77 @@
  *       401: { description: Unauthorized }
  *       403: { description: Forbidden }
  *       404: { description: User not found }
+ *
+ * /api/v1/admin/platform-tickets:
+ *   get:
+ *     tags: [Admin]
+ *     summary: List all platform tickets
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [open, in_review, resolved, closed]
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *           enum: [support, billing, technical_issue, account_access, feature_request, data_issue, other]
+ *       - in: query
+ *         name: priority
+ *         schema:
+ *           type: string
+ *           enum: [low, medium, high, urgent]
+ *     responses:
+ *       200: { description: OK }
+ *       401: { description: Unauthorized }
+ *       403: { description: Forbidden }
+ *
+ * /api/v1/admin/platform-tickets/{publicId}:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Get one platform ticket
+ *     parameters:
+ *       - in: path
+ *         name: publicId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200: { description: OK }
+ *       401: { description: Unauthorized }
+ *       403: { description: Forbidden }
+ *       404: { description: Not found }
+ *
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Update one platform ticket
+ *     parameters:
+ *       - in: path
+ *         name: publicId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [open, in_review, resolved, closed]
+ *               priority:
+ *                 type: string
+ *                 enum: [low, medium, high, urgent]
+ *               assignedToUserId:
+ *                 type: string
+ *                 format: uuid
+ *                 nullable: true
+ *     responses:
+ *       200: { description: OK }
+ *       401: { description: Unauthorized }
+ *       403: { description: Forbidden }
+ *       404: { description: Not found }
  */
 
 import { Router } from "express";
@@ -94,10 +165,13 @@ import {
   deactivateUser,
   deleteUser,
   getPlatformDashboard,
+  getPlatformTicketByPublicIdForAdmin,
   getUserByIdForAdmin,
+  listAllPlatformTickets,
   listAllUsers,
   updateUserPlatformRole,
 } from "../controllers/admin.controller";
+import { updatePlatformTicket } from "../controllers/platform-ticket.controller";
 
 const router = Router();
 
@@ -135,6 +209,24 @@ router.delete(
   "/users/:id",
   requireAuth(["super_admin"]),
   deleteUser
+);
+
+router.get(
+  "/platform-tickets",
+  requireAuth(["super_admin"]),
+  listAllPlatformTickets
+);
+
+router.get(
+  "/platform-tickets/:publicId",
+  requireAuth(["super_admin"]),
+  getPlatformTicketByPublicIdForAdmin
+);
+
+router.patch(
+  "/platform-tickets/:publicId",
+  requireAuth(["super_admin"]),
+  updatePlatformTicket
 );
 
 export default router;

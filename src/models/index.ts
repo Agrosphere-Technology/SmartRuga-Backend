@@ -18,6 +18,7 @@ import { TaskSubmissionFactory } from "./task-submission.model";
 import { InventoryItemFactory } from "./inventory-item.model";
 import { InventoryStockMovementFactory } from "./inventory-stock-movement.model";
 import { ConcernFactory } from "./concern.model";
+import { PlatformTicketFactory } from "./platformTicket.model";
 
 export const sequelize = new Sequelize(process.env.DATABASE_URL!, {
   dialect: "postgres",
@@ -53,6 +54,7 @@ export const TaskSubmission = TaskSubmissionFactory(sequelize);
 export const InventoryItem = InventoryItemFactory(sequelize);
 export const InventoryStockMovement = InventoryStockMovementFactory(sequelize);
 export const Concern = ConcernFactory(sequelize);
+export const PlatformTicket = PlatformTicketFactory(sequelize);
 
 // ===============================
 // USER ↔ RANCH
@@ -336,4 +338,37 @@ User.hasMany(Concern, {
 User.hasMany(Concern, {
   foreignKey: "resolved_by_user_id",
   as: "resolvedConcerns",
+});
+
+// ===============================
+// PLATFORM TICKETS
+// ===============================
+PlatformTicket.belongsTo(Ranch, {
+  foreignKey: "ranch_id",
+  as: "ranch",
+});
+
+PlatformTicket.belongsTo(User, {
+  foreignKey: "raised_by_user_id",
+  as: "raisedByUser",
+});
+
+PlatformTicket.belongsTo(User, {
+  foreignKey: "assigned_to_user_id",
+  as: "assignedToUser",
+});
+
+User.hasMany(PlatformTicket, {
+  foreignKey: "raised_by_user_id",
+  as: "raisedPlatformTickets",
+});
+
+User.hasMany(PlatformTicket, {
+  foreignKey: "assigned_to_user_id",
+  as: "assignedPlatformTickets",
+});
+
+Ranch.hasMany(PlatformTicket, {
+  foreignKey: "ranch_id",
+  as: "platformTickets",
 });
