@@ -1,0 +1,442 @@
+import axios from "axios";
+
+const BASE_URL = "https://smartruga-api-d11b7da5a7fa.herokuapp.com/api/v1";
+
+type RanchConfig = {
+    slug: string;
+    ownerToken: string;
+    managerToken: string;
+    workerToken: string;
+    vetToken: string;
+    storekeeperToken: string;
+    animals: Array<{
+        speciesId: string;
+        tagNumber: string;
+        rfidTag: string;
+        sex: string;
+        dateOfBirth: string;
+        breed: string;
+        weight: number;
+    }>;
+    inventoryItems: Array<{
+        name: string;
+        category: string;
+        unit: string;
+        sku: string;
+        description: string;
+        quantityOnHand: number;
+        reorderLevel: number;
+    }>;
+};
+
+const ranches: RanchConfig[] = [
+    {
+        slug: "sunrise-pastures",
+        ownerToken:
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI4MDI1Zjk4OS1jZGE0LTQ0ZjEtYjc5OC04YmY2Zjg5OTY1OWYiLCJwbGF0Zm9ybVJvbGUiOiJhZG1pbiIsImlhdCI6MTc3Njg1MTgyMCwiZXhwIjoxNzc2ODgwNjIwfQ.2gtudghpv3IUFUYXbIflSpYs1oVJDNgMCebpeIoBw5E",
+        managerToken:
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI0ZGU5NWJjNy00N2E0LTQyNWEtYTZjNS0xYzNkMzdiNjExYzciLCJwbGF0Zm9ybVJvbGUiOiJ1c2VyIiwiaWF0IjoxNzc2ODUxODgyLCJleHAiOjE3NzY4ODA2ODJ9.bCWcB7R4zD05Y_CzhgllIvvcH5I7LVOyVLwwnmDAsno",
+        workerToken:
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI3NzU2ODZjZC1hYjJjLTRlODUtYjlkMC1lNmExNGFhYTEzNmEiLCJwbGF0Zm9ybVJvbGUiOiJ1c2VyIiwiaWF0IjoxNzc2ODUxOTIxLCJleHAiOjE3NzY4ODA3MjF9.pdeTMtpJ_1COQw-hfC1UfDb5kBbst_85RObeCVzs4gg",
+        vetToken:
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI4OGYyYjQyYy03YjE5LTRhY2YtOTkyOS04YjJlODk4YTRlNzgiLCJwbGF0Zm9ybVJvbGUiOiJ1c2VyIiwiaWF0IjoxNzc2ODUxOTkwLCJleHAiOjE3NzY4ODA3OTB9.vwu5s3U_tEU3HZDMCOgrx2KPRKepIyKES3SnILsVh8Q",
+        storekeeperToken:
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIyODBjNGE1ZS1iNDk3LTQ5NWItOTg0Ny05MTdhMGQ0M2NlMjMiLCJwbGF0Zm9ybVJvbGUiOiJ1c2VyIiwiaWF0IjoxNzc2ODUyMDQzLCJleHAiOjE3NzY4ODA4NDN9.2m2S_nu0UFfDIAL93HO-VMqSr1fQjLZjKVEOUuZfiVs",
+        animals: [
+            {
+                speciesId: "8c8d0149-6ad4-43b4-a025-61942e93a7a9",
+                tagNumber: "SP-COW-201",
+                rfidTag: "982000400000201",
+                sex: "female",
+                dateOfBirth: "2023-01-10",
+                breed: "White Fulani",
+                weight: 315,
+            },
+            {
+                speciesId: "8c8d0149-6ad4-43b4-a025-61942e93a7a9",
+                tagNumber: "SP-COW-202",
+                rfidTag: "982000400000202",
+                sex: "male",
+                dateOfBirth: "2022-07-15",
+                breed: "Bunaji",
+                weight: 430,
+            },
+            {
+                speciesId: "7836a987-892b-4fb5-81b4-5dfda6dc04fe",
+                tagNumber: "SP-GOAT-201",
+                rfidTag: "982000400000203",
+                sex: "female",
+                dateOfBirth: "2023-04-01",
+                breed: "Red Sokoto",
+                weight: 41,
+            },
+            {
+                speciesId: "5b5d769b-1162-4a83-aaec-26cc6b7c5fe0",
+                tagNumber: "SP-SHEEP-201",
+                rfidTag: "982000400000204",
+                sex: "female",
+                dateOfBirth: "2023-02-20",
+                breed: "Yankasa",
+                weight: 57,
+            },
+        ],
+        inventoryItems: [
+            {
+                name: "Cattle Feed",
+                category: "feed",
+                unit: "bag",
+                sku: "SP-FD-201",
+                description: "Sunrise cattle feed bags",
+                quantityOnHand: 35,
+                reorderLevel: 10,
+            },
+            {
+                name: "Dewormer",
+                category: "medicine",
+                unit: "bottle",
+                sku: "SP-MED-201",
+                description: "Sunrise livestock dewormer",
+                quantityOnHand: 15,
+                reorderLevel: 5,
+            },
+            {
+                name: "Anthrax Vaccine",
+                category: "vaccine",
+                unit: "dose",
+                sku: "SP-VAC-201",
+                description: "Sunrise anthrax vaccine",
+                quantityOnHand: 90,
+                reorderLevel: 25,
+            },
+        ],
+    },
+    {
+        slug: "greenfield-ranch",
+        ownerToken:
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIwOGYxMDYyNy04MTQxLTQwMDYtYjkxMi04YzlhMmM5MjU0NGMiLCJwbGF0Zm9ybVJvbGUiOiJhZG1pbiIsImlhdCI6MTc3Njg1MjA5MywiZXhwIjoxNzc2ODgwODkzfQ.mmHyNTIEsf4MKCA8X1Meg7t6eS-uiGRixZoKwOZYnOU",
+        managerToken:
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIyY2FhMTFiOC0yY2E2LTRmMzItOGYzMi1lMTE2YTg2MDc0YzEiLCJwbGF0Zm9ybVJvbGUiOiJ1c2VyIiwiaWF0IjoxNzc2ODUyMTM1LCJleHAiOjE3NzY4ODA5MzV9.ZxtUc7f6pgZtbQKMnZdc7cXsvQv_aeGkDK0GmdkOVWg",
+        workerToken:
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI1MjE5MzYxZS1kOWVmLTQzODAtODY3Yi1lYjY2MjM3ZWMxMzkiLCJwbGF0Zm9ybVJvbGUiOiJ1c2VyIiwiaWF0IjoxNzc2ODUyMTgzLCJleHAiOjE3NzY4ODA5ODN9.RuzAgSIFGFXjC15nzi-brlUjrQgL3QBeHl73cvV7ezs",
+        vetToken:
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJiZTlhZTkwZC1jYmQ1LTQ4NTAtYTM3ZC01NjBlYTNhYmNiYzkiLCJwbGF0Zm9ybVJvbGUiOiJ1c2VyIiwiaWF0IjoxNzc2ODUyMjI2LCJleHAiOjE3NzY4ODEwMjZ9.zKa9iZxEcUHwxzAlFdCFwTj8o_cxb8E5_mrsfUCsU2s",
+        storekeeperToken:
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxOTE3ZTBmMi0yYzU5LTRmNmEtODg2MS0zZDY4NmRlZTI5N2IiLCJwbGF0Zm9ybVJvbGUiOiJ1c2VyIiwiaWF0IjoxNzc2ODUyMjcyLCJleHAiOjE3NzY4ODEwNzJ9.G23IC2qO4Kze3H7r1r0NR0FfNyMUx1w0KijBirMDttM",
+        animals: [
+            {
+                speciesId: "8c8d0149-6ad4-43b4-a025-61942e93a7a9",
+                tagNumber: "GF-COW-201",
+                rfidTag: "982000500000201",
+                sex: "female",
+                dateOfBirth: "2023-03-12",
+                breed: "Sokoto Gudali",
+                weight: 340,
+            },
+            {
+                speciesId: "7836a987-892b-4fb5-81b4-5dfda6dc04fe",
+                tagNumber: "GF-GOAT-201",
+                rfidTag: "982000500000202",
+                sex: "male",
+                dateOfBirth: "2022-10-18",
+                breed: "West African Dwarf",
+                weight: 39,
+            },
+            {
+                speciesId: "5b5d769b-1162-4a83-aaec-26cc6b7c5fe0",
+                tagNumber: "GF-SHEEP-201",
+                rfidTag: "982000500000203",
+                sex: "female",
+                dateOfBirth: "2023-05-02",
+                breed: "Yankasa",
+                weight: 53,
+            },
+            {
+                speciesId: "72d2b3a9-3ecf-4a5a-818f-479aac2265af",
+                tagNumber: "GF-PIG-201",
+                rfidTag: "982000500000204",
+                sex: "male",
+                dateOfBirth: "2023-08-14",
+                breed: "Large White",
+                weight: 88,
+            },
+        ],
+        inventoryItems: [
+            {
+                name: "Goat Feed",
+                category: "feed",
+                unit: "bag",
+                sku: "GF-FD-201",
+                description: "Greenfield goat feed bags",
+                quantityOnHand: 28,
+                reorderLevel: 8,
+            },
+            {
+                name: "Disinfectant",
+                category: "supplies",
+                unit: "container",
+                sku: "GF-SUP-201",
+                description: "Greenfield disinfectant supply",
+                quantityOnHand: 10,
+                reorderLevel: 4,
+            },
+            {
+                name: "Vitamin Supplement",
+                category: "medicine",
+                unit: "pack",
+                sku: "GF-MED-201",
+                description: "Greenfield vitamin supplement",
+                quantityOnHand: 24,
+                reorderLevel: 6,
+            },
+        ],
+    },
+];
+
+function makeApi(token: string) {
+    return axios.create({
+        baseURL: BASE_URL,
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+        },
+    });
+}
+
+async function getRanchMembers(token: string, ranchSlug: string) {
+    const api = makeApi(token);
+    const res = await api.get(`/ranches/${ranchSlug}/members`);
+    return res.data?.data?.members ?? [];
+}
+
+async function createAnimals(ownerToken: string, ranch: RanchConfig) {
+    const api = makeApi(ownerToken);
+    const created: any[] = [];
+
+    for (const animal of ranch.animals) {
+        try {
+            const res = await api.post(`/ranches/${ranch.slug}/animals`, animal);
+            const createdAnimal = res.data?.data?.animal;
+            created.push(createdAnimal);
+            console.log(`✅ [${ranch.slug}] Animal created: ${animal.tagNumber}`);
+        } catch (err: any) {
+            console.log(
+                `❌ [${ranch.slug}] Failed animal ${animal.tagNumber}:`,
+                err.response?.data ?? err.message
+            );
+        }
+    }
+
+    return created;
+}
+
+async function createHealthRecords(vetToken: string, ranch: RanchConfig, animals: any[]) {
+    const api = makeApi(vetToken);
+
+    const records = [
+        {
+            animalPublicId: animals[0]?.publicId ?? animals[0]?.public_id,
+            payload: {
+                status: "healthy",
+                notes: "Routine veterinary inspection completed.",
+            },
+        },
+        {
+            animalPublicId: animals[1]?.publicId ?? animals[1]?.public_id,
+            payload: {
+                status: "sick",
+                notes: "Observed reduced appetite and mild weakness.",
+            },
+        },
+        {
+            animalPublicId: animals[2]?.publicId ?? animals[2]?.public_id,
+            payload: {
+                status: "recovering",
+                notes: "Responding positively to treatment and observation.",
+            },
+        },
+    ].filter((r) => r.animalPublicId);
+
+    for (const record of records) {
+        try {
+            await api.post(
+                `/ranches/${ranch.slug}/animals/${record.animalPublicId}/health-events`,
+                record.payload
+            );
+            console.log(
+                `✅ [${ranch.slug}] Health record created for ${record.animalPublicId}`
+            );
+        } catch (err: any) {
+            console.log(
+                `❌ [${ranch.slug}] Failed health record for ${record.animalPublicId}:`,
+                err.response?.data ?? err.message
+            );
+        }
+    }
+}
+
+async function createInventoryItems(storekeeperToken: string, ranch: RanchConfig) {
+    const api = makeApi(storekeeperToken);
+
+    for (const item of ranch.inventoryItems) {
+        try {
+            await api.post(`/ranches/${ranch.slug}/inventory-items`, item);
+            console.log(`✅ [${ranch.slug}] Inventory item created: ${item.name}`);
+        } catch (err: any) {
+            console.log(
+                `❌ [${ranch.slug}] Failed inventory item ${item.name}:`,
+                err.response?.data ?? err.message
+            );
+        }
+    }
+}
+
+async function createTasks(
+    ranch: RanchConfig,
+    ownerToken: string,
+    managerToken: string,
+    members: any[]
+) {
+    const ownerApi = makeApi(ownerToken);
+    const managerApi = makeApi(managerToken);
+
+    const workerMember = members.find(
+        (m: any) => m.ranchRole === "worker" || m.role === "worker"
+    );
+    const vetMember = members.find(
+        (m: any) => m.ranchRole === "vet" || m.role === "vet"
+    );
+    const storekeeperMember = members.find(
+        (m: any) => m.ranchRole === "storekeeper" || m.role === "storekeeper"
+    );
+
+    const resolveUserPublicId = (member: any) =>
+        member?.user?.publicId ??
+        member?.user?.public_id ??
+        member?.user?.id ??
+        member?.publicId ??
+        member?.id;
+
+    const ownerTasks = [
+        workerMember && {
+            title: `Daily livestock inspection - ${ranch.slug}`,
+            description: "Inspect the main livestock sections and report observations.",
+            assignedToUserPublicId: resolveUserPublicId(workerMember),
+            dueDate: "2026-04-25",
+        },
+        storekeeperMember && {
+            title: `Check feed availability - ${ranch.slug}`,
+            description: "Verify store balance and report any shortages.",
+            assignedToUserPublicId: resolveUserPublicId(storekeeperMember),
+            dueDate: "2026-04-25",
+        },
+    ].filter(Boolean);
+
+    const managerTasks = [
+        vetMember && {
+            title: `Review sick animals - ${ranch.slug}`,
+            description: "Check animals with health concerns and update records.",
+            assignedToUserPublicId: resolveUserPublicId(vetMember),
+            dueDate: "2026-04-24",
+        },
+        workerMember && {
+            title: `Clean holding area - ${ranch.slug}`,
+            description: "Clean and sanitize the designated holding area.",
+            assignedToUserPublicId: resolveUserPublicId(workerMember),
+            dueDate: "2026-04-24",
+        },
+    ].filter(Boolean);
+
+    for (const task of ownerTasks as any[]) {
+        try {
+            await ownerApi.post(`/ranches/${ranch.slug}/tasks`, task);
+            console.log(`✅ [${ranch.slug}] Owner created task: ${task.title}`);
+        } catch (err: any) {
+            console.log(
+                `❌ [${ranch.slug}] Owner failed task ${task.title}:`,
+                err.response?.data ?? err.message
+            );
+        }
+    }
+
+    for (const task of managerTasks as any[]) {
+        try {
+            await managerApi.post(`/ranches/${ranch.slug}/tasks`, task);
+            console.log(`✅ [${ranch.slug}] Manager created task: ${task.title}`);
+        } catch (err: any) {
+            console.log(
+                `❌ [${ranch.slug}] Manager failed task ${task.title}:`,
+                err.response?.data ?? err.message
+            );
+        }
+    }
+}
+
+async function createConcern(workerToken: string, ranch: RanchConfig) {
+    const api = makeApi(workerToken);
+
+    try {
+        await api.post(`/ranches/${ranch.slug}/concerns`, {
+            title: `Feed level concern - ${ranch.slug}`,
+            description:
+                "Observed feed quantity dropping faster than expected in one section.",
+            category: "inventory",
+            priority: "high",
+        });
+        console.log(`✅ [${ranch.slug}] Worker raised concern`);
+    } catch (err: any) {
+        console.log(
+            `❌ [${ranch.slug}] Failed concern:`,
+            err.response?.data ?? err.message
+        );
+    }
+}
+
+async function createPlatformTicket(ownerToken: string, ranch: RanchConfig) {
+    const api = makeApi(ownerToken);
+
+    try {
+        await api.post(`/ranches/${ranch.slug}/platform-tickets`, {
+            title: `Support request for ${ranch.slug}`,
+            description:
+                "Please review the ranch setup and confirm the support tools are working properly.",
+            category: "support",
+            priority: "medium",
+        });
+        console.log(`✅ [${ranch.slug}] Owner created platform ticket`);
+    } catch (err: any) {
+        console.log(
+            `❌ [${ranch.slug}] Failed platform ticket:`,
+            err.response?.data ?? err.message
+        );
+    }
+}
+
+async function seedOneRanch(ranch: RanchConfig) {
+    console.log(`\n🚜 Seeding via API for ${ranch.slug}`);
+
+    const members = await getRanchMembers(ranch.ownerToken, ranch.slug);
+    console.log(`👥 [${ranch.slug}] Loaded ${members.length} ranch members`);
+
+    const animals = await createAnimals(ranch.ownerToken, ranch);
+    await createHealthRecords(ranch.vetToken, ranch, animals);
+    await createInventoryItems(ranch.storekeeperToken, ranch);
+    await createTasks(ranch, ranch.ownerToken, ranch.managerToken, members);
+    await createConcern(ranch.workerToken, ranch);
+    await createPlatformTicket(ranch.ownerToken, ranch);
+
+    console.log(`🎉 [${ranch.slug}] API bootstrap completed`);
+}
+
+async function main() {
+    try {
+        for (const ranch of ranches) {
+            await seedOneRanch(ranch);
+        }
+
+        console.log("\n✅ Both ranch API bootstraps completed successfully");
+    } catch (err: any) {
+        console.error("BOOTSTRAP_ERROR:", err.response?.data ?? err.message);
+    }
+}
+
+main();

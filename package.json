@@ -12,7 +12,8 @@
     "db:seed": "npx sequelize-cli db:seed:all",
     "db:undo-seed": "npx sequelize-cli db:seed:undo:all",
     "heroku-postbuild": "npm run build",
-    "db:seed-dev": "npx tsx src/scripts/seed-demo-data.ts"
+    "db:seed-dev": "npx tsx src/scripts/seed-demo-data.ts",
+    "db:seed-dev-demo": "npx tsx src/scripts/bootstrap-ranch-demo.ts"
   },
   "keywords": [
     "smartruga",

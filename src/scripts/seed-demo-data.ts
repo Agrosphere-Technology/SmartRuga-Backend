@@ -26,9 +26,9 @@ import {
 
 type RanchRole = "owner" | "manager" | "worker" | "vet" | "storekeeper";
 
-const TARGET_RANCH_SLUG = process.env.SEED_RANCH_SLUG || "test-wolf-ranch";
+const TARGET_RANCH_SLUGS = ["greenfield-ranch", "sunrise-pastures"];
 const DEFAULT_PASSWORD = process.env.SEED_USER_PASSWORD || "Password123!";
-const SHOULD_CREATE_EXTRA_USERS = true;
+const SHOULD_CREATE_EXTRA_USERS = false;
 
 function randInt(min: number, max: number) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -75,8 +75,14 @@ function addHours(date: Date, hours: number) {
     return d;
 }
 
-function animalTag(speciesCode: string, index: number) {
-    return `DEMO-${speciesCode.toUpperCase()}-${String(index).padStart(4, "0")}`;
+function animalTag(ranchSlug: string, speciesCode: string, index: number) {
+    const ranchPrefix =
+        ranchSlug === "greenfield-ranch"
+            ? "GR"
+            : ranchSlug === "sunrise-pastures"
+                ? "SP"
+                : "DM";
+    return `${ranchPrefix}-${speciesCode.toUpperCase()}-${String(index).padStart(4, "0")}`;
 }
 
 function fakeEmail(prefix: string, index: number) {
@@ -86,12 +92,12 @@ function fakeEmail(prefix: string, index: number) {
 async function ensureDemoUsersAndMemberships(ranchId: string) {
     const existingMemberships = await RanchMember.findAll({
         where: { ranch_id: ranchId },
-        include: [{ model: User }],
+        include: [{ model: User, as: "user" }],
     } as any);
 
     const members = existingMemberships.map((m: any) => ({
         membership: m,
-        user: m.User ?? m.user ?? null,
+        user: m.user ?? m.User ?? null,
         role: m.get("role") as RanchRole,
     }));
 
@@ -183,6 +189,7 @@ async function ensureDemoUsersAndMemberships(ranchId: string) {
                     ranch_id: ranchId,
                     user_id: user.get("id"),
                     role,
+                    status: "active",
                     created_at: new Date(),
                     updated_at: new Date(),
                 } as any);
@@ -194,13 +201,13 @@ async function ensureDemoUsersAndMemberships(ranchId: string) {
 
     const refreshedMemberships = await RanchMember.findAll({
         where: { ranch_id: ranchId },
-        include: [{ model: User }],
+        include: [{ model: User, as: "user" }],
     } as any);
 
     return refreshedMemberships
         .map((m: any) => ({
             membership: m,
-            user: m.User ?? m.user ?? null,
+            user: m.user ?? m.User ?? null,
             role: m.get("role") as RanchRole,
         }))
         .filter((m) => m.user);
@@ -238,21 +245,20 @@ async function ensureSpecies() {
     return speciesRecords;
 }
 
-async function seedAnimals(ranchId: string, speciesList: any[]) {
+async function seedAnimals(ranchId: string, ranchSlug: string, speciesList: any[]) {
     const existingDemoAnimals = Number(
         await Animal.count({
             where: {
                 ranch_id: ranchId,
-                tag_number: { [Op.like]: "DEMO-%" },
+                tag_number: { [Op.like]: `${ranchSlug === "greenfield-ranch" ? "GR" : "SP"}-%` },
             },
         } as any)
     );
 
-    if (existingDemoAnimals >= 60) {
+    if (existingDemoAnimals >= 40) {
         const animals = await Animal.findAll({
             where: {
                 ranch_id: ranchId,
-                tag_number: { [Op.like]: "DEMO-%" },
             },
             limit: 100,
             order: [["created_at", "DESC"]],
@@ -273,8 +279,8 @@ async function seedAnimals(ranchId: string, speciesList: any[]) {
     ];
 
     const breedBySpecies: Record<string, string[]> = {
-        cow: ["Holstein", "Jersey", "Angus", "White Fulani"],
-        goat: ["Boer", "Saanen", "West African Dwarf"],
+        cow: ["Holstein", "Jersey", "Angus", "White Fulani", "Bunaji"],
+        goat: ["Boer", "Saanen", "West African Dwarf", "Red Sokoto"],
         sheep: ["Merino", "Dorper", "Yankasa"],
         pig: ["Large White", "Landrace", "Duroc"],
         chicken: ["Broiler", "Layer", "Noiler"],
@@ -282,7 +288,7 @@ async function seedAnimals(ranchId: string, speciesList: any[]) {
 
     const animals: any[] = [];
 
-    for (let i = 1; i <= 80; i++) {
+    for (let i = 1; i <= 50; i++) {
         const species = pickOne(speciesList);
         const speciesCode = String(species.get("code"));
         const breed = pickOne(breedBySpecies[speciesCode] || ["Mixed"]);
@@ -297,7 +303,7 @@ async function seedAnimals(ranchId: string, speciesList: any[]) {
             ranch_id: ranchId,
             species_id: species.get("id"),
             current_location_id: null,
-            tag_number: animalTag(speciesCode, i),
+            tag_number: animalTag(ranchSlug, speciesCode, i),
             rfid_tag: `982000${randInt(100000000, 999999999)}`,
             breed,
             weight:
@@ -333,7 +339,7 @@ async function seedAnimalHealthEvents(animals: any[], members: any[]) {
         "quarantined",
     ];
 
-    const selectedAnimals = pickMany(animals, Math.min(45, animals.length));
+    const selectedAnimals = pickMany(animals, Math.min(30, animals.length));
 
     for (const animal of selectedAnimals) {
         const recorder = pickOne(vetsAndManagers).user;
@@ -369,7 +375,7 @@ async function seedAnimalActivityEvents(animals: any[], members: any[], ranchId:
 
     const fields = ["weight", "breed", "tag_number", "image_url"];
 
-    for (const animal of pickMany(animals, Math.min(30, animals.length))) {
+    for (const animal of pickMany(animals, Math.min(20, animals.length))) {
         const recorder = pickOne(recorders).user;
         const createdAt = daysAgo(randInt(1, 40));
 
@@ -403,7 +409,7 @@ async function seedVaccinations(ranchId: string, animals: any[], members: any[])
         ["owner", "manager", "vet"].includes(m.role)
     );
 
-    for (const animal of pickMany(animals, Math.min(55, animals.length))) {
+    for (const animal of pickMany(animals, Math.min(35, animals.length))) {
         const administeredAt = daysAgo(randInt(1, 180));
 
         let nextDueAt: Date | null = null;
@@ -446,11 +452,10 @@ async function seedInventory(ranchId: string, members: any[]) {
         } as any)
     );
 
-    if (existingDemoItems >= 15) {
+    if (existingDemoItems >= 12) {
         const items = await InventoryItem.findAll({
             where: {
                 ranch_id: ranchId,
-                sku: { [Op.like]: "DEMO-SKU-%" },
             },
             order: [["created_at", "DESC"]],
             limit: 30,
@@ -476,14 +481,6 @@ async function seedInventory(ranchId: string, members: any[]) {
         ["Bandages", "first_aid", "roll"],
         ["Tick Spray", "medicine", "bottle"],
         ["Mineral Salt", "supplement", "bag"],
-        ["Thermometer", "equipment", "piece"],
-        ["Milk Test Strip", "testing", "pack"],
-        ["IV Fluid", "medicine", "bag"],
-        ["Vaccination Card", "record", "pack"],
-        ["Ear Tags", "identification", "pack"],
-        ["RFID Tags", "identification", "pack"],
-        ["Hoof Treatment", "medicine", "bottle"],
-        ["Cleaning Brush", "equipment", "piece"],
     ];
 
     const createdItems: any[] = [];
@@ -593,7 +590,7 @@ async function seedTasks(ranchId: string, members: any[]) {
         } as any)
     );
 
-    if (existingDemoTasks >= 25) {
+    if (existingDemoTasks >= 20) {
         const tasks = await Task.findAll({
             where: { ranch_id: ranchId },
             order: [["created_at", "DESC"]],
@@ -624,7 +621,7 @@ async function seedTasks(ranchId: string, members: any[]) {
 
     const tasks: any[] = [];
 
-    for (let i = 0; i < 35; i++) {
+    for (let i = 0; i < 25; i++) {
         const assigner = pickOne(managers).user;
         const assignee = pickOne(assignees).user;
         const status = pickOne([
@@ -668,7 +665,7 @@ async function seedTasks(ranchId: string, members: any[]) {
 async function seedTaskSubmissions(tasks: any[], members: any[]) {
     const managers = members.filter((m) => ["owner", "manager"].includes(m.role));
 
-    for (const task of pickMany(tasks, Math.min(25, tasks.length))) {
+    for (const task of pickMany(tasks, Math.min(18, tasks.length))) {
         if (task.get("cancelled_at")) continue;
 
         const existingSubmission = await TaskSubmission.findOne({
@@ -718,7 +715,7 @@ async function seedConcerns(ranchId: string, members: any[]) {
         } as any)
     );
 
-    if (existingDemoConcerns >= 20) return;
+    if (existingDemoConcerns >= 15) return;
 
     const raisers = members.filter((m) =>
         ["worker", "vet", "storekeeper", "manager"].includes(m.role)
@@ -746,17 +743,10 @@ async function seedConcerns(ranchId: string, members: any[]) {
         "Suspected infection in calf group",
     ];
 
-    const statuses = [
-        "open",
-        "open",
-        "in_review",
-        "resolved",
-        "dismissed",
-    ];
-
+    const statuses = ["open", "open", "in_review", "resolved", "dismissed"];
     const priorities = ["low", "medium", "high", "urgent"];
 
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < 18; i++) {
         const raisedBy = pickOne(raisers).user;
         const assignedTo = pickOne(resolvers).user;
         const status = pickOne(statuses);
@@ -807,7 +797,7 @@ async function seedAlerts(ranchId: string, animals: any[], tasks: any[]) {
         } as any)
     );
 
-    if (existingDemoAlerts >= 15) return;
+    if (existingDemoAlerts >= 12) return;
 
     const alertTypes = [
         "health_sick",
@@ -825,7 +815,7 @@ async function seedAlerts(ranchId: string, animals: any[], tasks: any[]) {
         "concern_resolved",
     ];
 
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 15; i++) {
         const alertType = pickOne(alertTypes);
         const animal = maybe(pickOne(animals), 0.4);
         const task = maybe(pickOne(tasks), 0.4);
@@ -853,35 +843,26 @@ async function seedAlerts(ranchId: string, animals: any[], tasks: any[]) {
     }
 }
 
-async function main() {
-    if (process.env.NODE_ENV === "production") {
-        throw new Error("Seeding is disabled in production");
-    }
-
-    await sequelize.authenticate();
-
+async function seedOneRanch(ranchSlug: string, speciesList: any[]) {
     const ranch = await Ranch.findOne({
-        where: { slug: TARGET_RANCH_SLUG },
+        where: { slug: ranchSlug },
     } as any);
 
     if (!ranch) {
-        throw new Error(
-            `Ranch with slug "${TARGET_RANCH_SLUG}" not found. Create it first or change SEED_RANCH_SLUG.`
-        );
+        console.log(`⚠️ Ranch with slug "${ranchSlug}" not found, skipping...`);
+        return;
     }
 
     const ranchId = String(ranch.get("id"));
 
-    console.log(`🌱 Seeding demo data into ranch: ${TARGET_RANCH_SLUG}`);
+    console.log(`🌱 Seeding demo data into ranch: ${ranchSlug}`);
 
     const members = await ensureDemoUsersAndMemberships(ranchId);
     if (members.length === 0) {
-        throw new Error("No ranch members found or created.");
+        throw new Error(`No ranch members found or created for ${ranchSlug}.`);
     }
 
-    const speciesList = await ensureSpecies();
-    const animals = await seedAnimals(ranchId, speciesList);
-
+    const animals = await seedAnimals(ranchId, ranchSlug, speciesList);
     await seedAnimalHealthEvents(animals, members);
     await seedAnimalActivityEvents(animals, members, ranchId);
     await seedVaccinations(ranchId, animals, members);
@@ -895,12 +876,28 @@ async function main() {
     await seedConcerns(ranchId, members);
     await seedAlerts(ranchId, animals, tasks);
 
-    console.log("✅ Demo seed complete");
-    console.log(`Ranch: ${TARGET_RANCH_SLUG}`);
+    console.log(`✅ Demo seed complete for ${ranchSlug}`);
     console.log(`Members available: ${members.length}`);
     console.log(`Animals seeded/available: ${animals.length}`);
     console.log(`Inventory items seeded: ${inventoryItems.length}`);
     console.log(`Tasks seeded: ${tasks.length}`);
+    console.log("---------------------------------------------------");
+}
+
+async function main() {
+    if (process.env.NODE_ENV === "production") {
+        throw new Error("Seeding is disabled in production");
+    }
+
+    await sequelize.authenticate();
+
+    const speciesList = await ensureSpecies();
+
+    for (const ranchSlug of TARGET_RANCH_SLUGS) {
+        await seedOneRanch(ranchSlug, speciesList);
+    }
+
+    console.log("✅ All requested ranch seeds completed");
     console.log(`Default demo user password: ${DEFAULT_PASSWORD}`);
 
     await sequelize.close();

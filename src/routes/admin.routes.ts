@@ -37,6 +37,20 @@
  *       403: { description: Forbidden }
  *       404: { description: User not found }
  *
+ *   delete:
+ *     tags: [Admin]
+ *     summary: Soft delete a user
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200: { description: OK }
+ *       401: { description: Unauthorized }
+ *       403: { description: Forbidden }
+ *       404: { description: User not found }
+ *
  * /api/v1/admin/users/{id}/platform-role:
  *   patch:
  *     tags: [Admin]
@@ -61,21 +75,6 @@
  *   patch:
  *     tags: [Admin]
  *     summary: Deactivate a user
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string, format: uuid }
- *     responses:
- *       200: { description: OK }
- *       401: { description: Unauthorized }
- *       403: { description: Forbidden }
- *       404: { description: User not found }
- *
- * /api/v1/admin/users/{id}:
- *   delete:
- *     tags: [Admin]
- *     summary: Soft delete a user
  *     parameters:
  *       - in: path
  *         name: id

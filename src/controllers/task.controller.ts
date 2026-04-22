@@ -240,15 +240,16 @@ export async function createTask(req: Request, res: Response) {
 export async function listTasks(req: Request, res: Response) {
     try {
         const ranchId = req.ranch!.id;
-        const ranchRole = req.membership!.ranchRole;
         const currentUserId = req.user!.id;
+        const ranchRole = req.membership?.ranchRole ?? null;
+        const isSuperAdmin = req.user!.platformRole === "super_admin";
 
         const where: any = {
             ranch_id: ranchId,
             cancelled_at: null,
         };
 
-        if (!["owner", "manager"].includes(ranchRole)) {
+        if (!isSuperAdmin && !["owner", "manager"].includes(ranchRole ?? "")) {
             where.assigned_to_user_id = currentUserId;
         }
 
@@ -274,8 +275,7 @@ export async function listTasks(req: Request, res: Response) {
         const summary = {
             total: formattedTasks.length,
             pending: formattedTasks.filter((task: any) => task.status === "pending").length,
-            inProgress: formattedTasks.filter((task: any) => task.status === "in_progress")
-                .length,
+            inProgress: formattedTasks.filter((task: any) => task.status === "in_progress").length,
             completed: formattedTasks.filter((task: any) => task.status === "completed").length,
             overdue: formattedTasks.filter((task: any) => task.isOverdue).length,
         };
@@ -525,10 +525,11 @@ export async function getTaskByPublicId(req: Request, res: Response) {
     try {
         const ranchId = req.ranch!.id;
         const currentUserId = req.user!.id;
-        const ranchRole = req.membership!.ranchRole;
+        const ranchRole = req.membership?.ranchRole ?? null;
+        const isSuperAdmin = req.user!.platformRole === "super_admin";
         const { taskPublicId } = req.params;
 
-        const canManage = ["owner", "manager"].includes(ranchRole);
+        const canManage = isSuperAdmin || ["owner", "manager"].includes(ranchRole ?? "");
 
         const task = await Task.findOne({
             where: {
