@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import { StatusCodes } from "http-status-codes";
 
-import { User, RefreshToken } from "../models";
+import { User, RefreshToken, RanchMember, Ranch } from "../models";
 import { sha256 } from "../utils/crypto";
 import {
   signAccessToken,
@@ -118,6 +118,7 @@ export async function login(req: Request, res: Response) {
     const { password } = parsed.data;
 
     const user = await User.findOne({ where: { email } });
+
     if (!user) {
       return res.status(StatusCodes.UNAUTHORIZED).json(
         errorResponse({
@@ -137,6 +138,33 @@ export async function login(req: Request, res: Response) {
           message: "Invalid credentials",
         })
       );
+    }
+
+    const membership = await RanchMember.findOne({
+      where: {
+        user_id: user.get("id"),
+        status: "active",
+      },
+      include: [
+        {
+          model: Ranch,
+          as: "ranch",
+          attributes: ["id", "name", "slug"],
+        },
+      ],
+    } as any);
+
+    let ranchData = null;
+
+    if (membership && (membership as any).ranch) {
+      const ranch = (membership as any).ranch;
+
+      ranchData = {
+        id: ranch.get("id"),
+        name: ranch.get("name"),
+        slug: ranch.get("slug"),
+        role: membership.get("role"),
+      };
     }
 
     const platformRole = user.get(
@@ -173,6 +201,7 @@ export async function login(req: Request, res: Response) {
             lastName: user.get("last_name"),
             platformRole,
           },
+          ranch: ranchData,
           accessToken,
         },
       })
