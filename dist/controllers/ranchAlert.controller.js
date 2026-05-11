@@ -117,7 +117,7 @@ async function getUnreadRanchAlertsCount(req, res) {
         const requesterRole = req.membership.ranchRole;
         if (!(0, ranchAlert_helpers_1.canViewAlerts)(requesterRole)) {
             return res.status(http_status_codes_1.StatusCodes.FORBIDDEN).json((0, apiResponse_1.errorResponse)({
-                message: "Only owner/manager/vet can view ranch alerts",
+                message: "Only owner/manager/vet/store keeper can view ranch alerts",
             }));
         }
         const ranchId = req.ranch.id;

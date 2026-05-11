@@ -8,7 +8,9 @@ const roles_1 = require("../constants/roles");
 function canViewAlerts(role) {
     return (role === roles_1.RANCH_ROLES.OWNER ||
         role === roles_1.RANCH_ROLES.MANAGER ||
-        role === roles_1.RANCH_ROLES.VET);
+        role === roles_1.RANCH_ROLES.VET ||
+        role === roles_1.RANCH_ROLES.STOREKEEPER
+    );
 }
 function canManageAlerts(role) {
     return (role === roles_1.RANCH_ROLES.OWNER ||
