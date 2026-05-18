@@ -4,7 +4,9 @@ export function canViewAlerts(role: string) {
     return (
         role === RANCH_ROLES.OWNER ||
         role === RANCH_ROLES.MANAGER ||
-        role === RANCH_ROLES.VET
+        role === RANCH_ROLES.VET ||
+        role === RANCH_ROLES.STOREKEEPER ||
+        role === RANCH_ROLES.WORKER
     );
 }
 
