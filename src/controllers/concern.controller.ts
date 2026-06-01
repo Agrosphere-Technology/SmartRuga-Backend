@@ -52,8 +52,19 @@ function formatConcern(concern: any) {
         resolutionNotes:
             concern.getDataValue?.("resolution_notes") ?? concern.resolution_notes,
         resolvedAt: concern.getDataValue?.("resolved_at") ?? concern.resolved_at,
-        createdAt: concern.getDataValue?.("created_at") ?? concern.created_at,
-        updatedAt: concern.getDataValue?.("updated_at") ?? concern.updated_at,
+        createdAt:
+            concern.getDataValue?.("created_at") ??
+            concern.getDataValue?.("createdAt") ??
+            concern.created_at ??
+            concern.createdAt ??
+            null,
+
+        updatedAt:
+            concern.getDataValue?.("updated_at") ??
+            concern.getDataValue?.("updatedAt") ??
+            concern.updated_at ??
+            concern.updatedAt ??
+            null,
         raisedBy: formatUser(raisedByUser),
         assignedTo: formatUser(assignedToUser),
         resolvedBy: formatUser(resolvedByUser),
